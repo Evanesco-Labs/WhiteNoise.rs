@@ -1,0 +1,7 @@
+[package]
+name = "whitenoise"
+version = "0.1.0"
+authors = ["Evanesco-Labs"]
+edition = "2021"
+
+[dependencies]
