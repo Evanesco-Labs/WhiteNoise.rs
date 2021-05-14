@@ -1,10 +1,6 @@
 pub mod network;
 pub mod account;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+pub mod command_proto {
+    include!(concat!(env!("OUT_DIR"), "/command_proto.rs"));
 }
