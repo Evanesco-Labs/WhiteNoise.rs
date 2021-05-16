@@ -13,6 +13,8 @@ use prost::Message;
 
 use log::{debug};
 
+const MAX_SIZE: usize = 8 * 1024 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct AckProtocol();
 
@@ -43,7 +45,7 @@ impl RequestResponseCodec for AckCodec {
             T: AsyncRead + Unpin + Send
     {
         debug!("received ack request");
-        read_one(io, 8 * 1024 * 1024)
+        read_one(io, MAX_SIZE)
             .map(|res| match res {
                 Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
                 Ok(vec) if vec.is_empty() => {
@@ -52,7 +54,6 @@ impl RequestResponseCodec for AckCodec {
                 }
                 Ok(vec) => {
                     debug!("received ack request,len is good");
-
                     let zz = command_proto::Ack::decode(vec.as_slice()).unwrap();
                     Ok(AckRequest(zz))
                 }
@@ -65,7 +66,7 @@ impl RequestResponseCodec for AckCodec {
         where
             T: AsyncRead + Unpin + Send
     {
-        read_one(io, 8 * 1024 * 1024)
+        read_one(io, MAX_SIZE)
             .map(|res| match res {
                 Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
                 Ok(vec) if vec.is_empty() => {
