@@ -88,7 +88,7 @@ impl RequestResponseCodec for CmdCodec {
     {
         debug!("send cmd request,request id:{}", request.command_id);
         let mut buf_final = Vec::new();
-        request.encode(&mut buf_final);
+        request.encode(&mut buf_final)?;
         write_with_len_prefix(io, buf_final).await
     }
 
