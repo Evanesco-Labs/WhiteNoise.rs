@@ -89,7 +89,7 @@ impl RequestResponseCodec for AckCodec {
             T: AsyncWrite + Unpin + Send
     {
         let mut buf = Vec::new();
-        data.encode(&mut buf);
+        data.encode(&mut buf)?;
         write_with_len_prefix(io, buf).await
     }
 

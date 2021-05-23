@@ -79,14 +79,14 @@ impl RequestResponseCodec for ProxyCodec {
             .await
     }
 
-    async fn write_request<T>(&mut self, _: &ProxyProtocol, io: &mut T, ProxyRequest(mut request): ProxyRequest)
+    async fn write_request<T>(&mut self, _: &ProxyProtocol, io: &mut T, ProxyRequest(request): ProxyRequest)
                               -> io::Result<()>
         where
             T: AsyncWrite + Unpin + Send
     {
         debug!("send proxy request,request id:{}", request.req_id);
         let mut buf_final = Vec::new();
-        request.encode(&mut buf_final);
+        request.encode(&mut buf_final)?;
         write_with_len_prefix(io, buf_final).await
     }
 
