@@ -2869,6 +2869,7 @@ dependencies = [
  "prost",
  "prost-build",
  "tokio",
+ "void",
 ]
 
 [[package]]
