@@ -1,9 +1,8 @@
-use std::rc::Rc;
 use libp2p::{
     identity,
     identity::Keypair,
 };
-use rusty_leveldb::{BloomPolicy, DB};
+use rusty_leveldb::{DB};
 use log::info;
 
 pub struct Account {}
