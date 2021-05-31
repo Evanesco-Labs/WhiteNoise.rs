@@ -1,4 +1,4 @@
-use libp2p::{PeerId, gossipsub, identify};
+use libp2p::{PeerId, gossipsub, identify, Swarm};
 use smallvec::SmallVec;
 use tokio::sync::{oneshot, mpsc};
 use crate::network::protocols::proxy_protocol::{ProxyRequest, ProxyCodec, ProxyResponse};
@@ -14,7 +14,8 @@ use libp2p::NetworkBehaviour;
 use log::{info, debug, warn};
 use libp2p::kad::{Kademlia, KademliaEvent};
 use libp2p::kad::record::store::MemoryStore;
-use libp2p::gossipsub::{GossipsubMessage, GossipsubEvent};
+use libp2p::gossipsub::{GossipsubMessage, GossipsubEvent, IdentTopic};
+use libp2p::kad::kbucket::NodeStatus;
 
 pub struct NodeAckRequest {
     pub remote_peer_id: PeerId,
@@ -258,7 +259,7 @@ impl NetworkBehaviourEventProcess<KademliaEvent> for WhitenoiseServerBehaviour {
 }
 
 impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerBehaviour {
-    // Called when `floodsub` produces an event.
+    // Called when `identity` produces an event.
     fn inject_event(&mut self, message: identify::IdentifyEvent) {
         match message {
             identify::IdentifyEvent::Received { peer_id, info } => {
@@ -290,4 +291,152 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerB
             identify::IdentifyEvent::Pushed { peer_id } => {}
         }
     }
+}
+
+#[derive(NetworkBehaviour)]
+pub struct WhitenoiseClientBehaviour {
+    pub whitenoise_behaviour: WhitenoiseBehaviour,
+    pub identify_behaviour: identify::Identify,
+}
+
+impl NetworkBehaviourEventProcess<()> for WhitenoiseClientBehaviour {
+    fn inject_event(&mut self, message: ()) {
+        info!("receive inner behaviour message:{:?}", message);
+    }
+}
+
+impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseClientBehaviour {
+    // Called when `identity` produces an event.
+    fn inject_event(&mut self, message: identify::IdentifyEvent) {}
+}
+
+
+pub async fn whitenoise_client_event_loop(mut swarm1: Swarm<WhitenoiseClientBehaviour>, mut node_request_receiver: tokio::sync::mpsc::UnboundedReceiver<NodeRequest>) {
+    loop {
+        tokio::select! {
+            event = swarm1.next() => {
+                panic!("Unexpected event: {:?}", event);
+            }
+            Some(node_request) = node_request_receiver.recv() =>{
+                debug!("receive node request for client");
+                match node_request{
+                    NodeRequest::ProxyRequest(node_proxy_request)=>{
+                        swarm1.behaviour_mut().whitenoise_behaviour.proxy_behaviour.send_request(&(node_proxy_request.remote_peer_id),node_proxy_request.proxy_request.unwrap().clone());
+                    }
+                    NodeRequest::CmdRequest(node_cmd_request) =>{
+                        swarm1.behaviour_mut().whitenoise_behaviour.cmd_behaviour.send_request(&node_cmd_request.remote_peer_id,node_cmd_request.cmd_request.unwrap().clone());
+                    }
+                    NodeRequest::AddPeerAddressesRequest(add_peer_addresses) =>{
+                        add_peer_addresses.remote_addr.iter().for_each(|x|{
+                            swarm1.behaviour_mut().whitenoise_behaviour.ack_behaviour.add_address(&(add_peer_addresses.remote_peer_id),x.clone());
+                            swarm1.behaviour_mut().whitenoise_behaviour.proxy_behaviour.add_address(&(add_peer_addresses.remote_peer_id),x.clone());
+                        });
+                        swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.addresses.insert(add_peer_addresses.remote_peer_id, add_peer_addresses.remote_addr);
+                    }
+                    NodeRequest::AckRequest(node_ack_request)=>{
+                        debug!("receive node request for client,prepare to send ack");
+                        swarm1.behaviour_mut().whitenoise_behaviour.ack_behaviour.send_request(&(node_ack_request.remote_peer_id),node_ack_request.ack_request.unwrap().clone());
+
+                    }
+                    NodeRequest::NewStreamRequest(node_new_stream)=>{
+                        let peer_addr = swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.addresses_of_peer(&node_new_stream.peer_id);
+                        debug!("receive new stream request:{},addresses:{:?}",node_new_stream.peer_id,peer_addr);
+                        swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.new_stream(&node_new_stream.peer_id);
+                    }
+                    NodeRequest::GetMainNetsRequest(get_main_nets) =>{}
+                    NodeRequest::PublishData(data) =>{}
+                }
+            }
+        }
+    }
+}
+
+pub async fn whitenoise_server_event_loop(mut swarm1: Swarm<WhitenoiseServerBehaviour>, mut node_request_receiver: tokio::sync::mpsc::UnboundedReceiver<NodeRequest>) {
+    let mut listening = false;
+    loop {
+        tokio::select! {
+            event = swarm1.next() => {
+                panic!("Unexpected event: {:?}", event);
+            }
+            Some(node_request) = node_request_receiver.recv() =>{
+                debug!("receive node request");
+                match node_request{
+                    NodeRequest::ProxyRequest(node_proxy_request)=>{
+                        swarm1.behaviour_mut().whitenoise_behaviour.proxy_behaviour.send_request(&(node_proxy_request.remote_peer_id),node_proxy_request.proxy_request.unwrap().clone());
+                    }
+                    NodeRequest::CmdRequest(node_cmd_request) =>{
+                        swarm1.behaviour_mut().whitenoise_behaviour.cmd_behaviour.send_request(&node_cmd_request.remote_peer_id,node_cmd_request.cmd_request.unwrap().clone());
+                    }
+                    NodeRequest::AddPeerAddressesRequest(add_peer_addresses) =>{
+                        add_peer_addresses.remote_addr.iter().for_each(|x|{
+                            swarm1.behaviour_mut().whitenoise_behaviour.ack_behaviour.add_address(&(add_peer_addresses.remote_peer_id),x.clone());
+                            swarm1.behaviour_mut().whitenoise_behaviour.proxy_behaviour.add_address(&(add_peer_addresses.remote_peer_id),x.clone());
+                        });
+                        swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.addresses.insert(add_peer_addresses.remote_peer_id, add_peer_addresses.remote_addr);
+                    }
+                    NodeRequest::AckRequest(node_ack_request)=>{
+                        debug!("prepare to send ack");
+                        swarm1.behaviour_mut().whitenoise_behaviour.ack_behaviour.send_request(&(node_ack_request.remote_peer_id),node_ack_request.ack_request.unwrap().clone());
+
+                    }
+                    NodeRequest::NewStreamRequest(node_new_stream)=>{
+                        let peer_addr = swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.addresses_of_peer(&node_new_stream.peer_id);
+                        debug!("receive new stream request:{},addresses:{:?}",node_new_stream.peer_id,peer_addr);
+                        swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.new_stream(&node_new_stream.peer_id);
+                    }
+                    NodeRequest::GetMainNetsRequest(get_main_nets) =>{
+                        debug!("prepare to return main net peers");
+                        let peers = get_kad_peers(&mut swarm1,get_main_nets.num);
+                        get_main_nets.sender.send(peers);
+                    }
+                    NodeRequest::PublishData(PublishDataRequest{data,sender}) =>{
+                        debug!("prepare to publish data");
+                        swarm1.behaviour_mut().gossip_sub.publish(IdentTopic::new("noise_topic"),data);
+                        sender.send(true);
+                    }
+                }
+            }
+        }
+        if !listening {
+            for addr in Swarm::listeners(&swarm1) {
+                println!("Listening on {:?}", addr);
+                listening = true;
+            }
+        }
+    }
+}
+
+
+pub fn get_kad_peers(swarm1: &mut Swarm<WhitenoiseServerBehaviour>, number: i32) -> Vec<request_proto::NodeInfo> {
+    let mut peers = Vec::new();
+    let mut peer_ids = Vec::new();
+    let mut cnt = 0;
+    swarm1.behaviour_mut().kad_dht.kbuckets().for_each(|kbucket_ref| {
+        kbucket_ref.iter().for_each(|entry_ref_view| {
+            if cnt < number {
+                let node = entry_ref_view.node;
+                let status = entry_ref_view.status;
+                match status {
+                    NodeStatus::Disconnected => {}
+                    NodeStatus::Connected => {
+                        let peer_id = node.key.preimage().clone().to_base58();
+                        peer_ids.push(node.key.preimage().clone());
+                        let addresses = node.value.clone();
+                        let mut addrs = Vec::new();
+                        addresses.iter().for_each(|address| {
+                            let address_str = address.to_string();
+                            let p2p_str: Vec<&str> = address_str.matches("p2p").collect();
+                            if p2p_str.len() <= 0 {
+                                addrs.push(address_str);
+                            } else {}
+                        });
+                        let node_info = request_proto::NodeInfo { id: peer_id, addr: addrs };
+                        peers.push(node_info);
+                        cnt = cnt + 1;
+                    }
+                }
+            }
+        })
+    });
+    return peers;
 }
