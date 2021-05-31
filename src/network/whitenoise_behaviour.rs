@@ -1,4 +1,4 @@
-use libp2p::PeerId;
+use libp2p::{PeerId, gossipsub, identify};
 use smallvec::SmallVec;
 use tokio::sync::{oneshot, mpsc};
 use crate::network::protocols::proxy_protocol::{ProxyRequest, ProxyCodec, ProxyResponse};
@@ -12,6 +12,9 @@ use std::collections::VecDeque;
 use libp2p::swarm::{NetworkBehaviourEventProcess, NetworkBehaviour};
 use libp2p::NetworkBehaviour;
 use log::{info, debug, warn};
+use libp2p::kad::{Kademlia, KademliaEvent};
+use libp2p::kad::record::store::MemoryStore;
+use libp2p::gossipsub::{GossipsubMessage, GossipsubEvent};
 
 pub struct NodeAckRequest {
     pub remote_peer_id: PeerId,
@@ -199,6 +202,92 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<AckRequest, AckResponse>>
             RequestResponseEvent::ResponseSent { peer, request_id } => {
                 debug!("ack send response:{:?}", request_id);
             }
+        }
+    }
+}
+
+
+#[derive(NetworkBehaviour)]
+pub struct WhitenoiseServerBehaviour {
+    pub whitenoise_behaviour: WhitenoiseBehaviour,
+    pub gossip_sub: gossipsub::Gossipsub,
+    pub kad_dht: Kademlia<MemoryStore>,
+    pub identify_behaviour: identify::Identify,
+    #[behaviour(ignore)]
+    pub publish_channel: mpsc::UnboundedSender<GossipsubMessage>,
+}
+
+impl NetworkBehaviourEventProcess<()> for WhitenoiseServerBehaviour {
+    fn inject_event(&mut self, message: ()) {
+        info!("receive inner behaviour message:{:?}", message);
+    }
+}
+
+impl NetworkBehaviourEventProcess<GossipsubEvent> for WhitenoiseServerBehaviour {
+    fn inject_event(&mut self, event: GossipsubEvent) {
+        match event {
+            GossipsubEvent::Message { propagation_source, message_id, message } => {
+                self.publish_channel.send(message);
+            }
+            GossipsubEvent::Subscribed { peer_id, .. } => {}
+            _ => {}
+        }
+    }
+}
+
+impl NetworkBehaviourEventProcess<KademliaEvent> for WhitenoiseServerBehaviour {
+    fn inject_event(&mut self, message: KademliaEvent) {
+        match message {
+            KademliaEvent::RoutablePeer { peer, address } => {
+                info!("routable peer,peer:{:?},addresses:{:?}", peer, address);
+            }
+            KademliaEvent::RoutingUpdated { peer, addresses, old_peer } => {
+                info!("routing updated,peer:{:?},addresses:{:?}", peer, addresses);
+            }
+            KademliaEvent::UnroutablePeer { peer } => {
+                info!("unroutable peer:{}", peer)
+            }
+            KademliaEvent::QueryResult { id, result, .. } => {
+                info!("query result:{:?}", result);
+            }
+            KademliaEvent::PendingRoutablePeer { peer, address } => {
+                info!("pending routable peer,id:{:?},address:{}", peer, address);
+            }
+        }
+    }
+}
+
+impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerBehaviour {
+    // Called when `floodsub` produces an event.
+    fn inject_event(&mut self, message: identify::IdentifyEvent) {
+        match message {
+            identify::IdentifyEvent::Received { peer_id, info } => {
+                debug!("Received: '{:?}' from {:?}", info, peer_id);
+                // gossipsub start connections to node except the bootstrap, after connection starts the identity event, put addresses into the KadDht store.
+                let identify::IdentifyInfo { listen_addrs, protocols, .. } = info;
+                let mut is_server_node = false;
+                protocols.iter().for_each(|x| {
+                    let find = x.find("meshsub");
+                    if find.is_some() {
+                        is_server_node = true;
+                    }
+                });
+                if is_server_node == true {
+                    for addr in listen_addrs {
+                        debug!("identify addr:{:?}", addr);
+                        self.kad_dht.add_address(&peer_id, addr);
+                    }
+                } else {
+                    debug!("not server node");
+                }
+            }
+            identify::IdentifyEvent::Sent { peer_id } => {
+                debug!("Sent: '{:?}'", peer_id);
+            }
+            identify::IdentifyEvent::Error { peer_id, error } => {
+                debug!("identify error: '{:?}',error: '{:?}'", peer_id, error);
+            }
+            identify::IdentifyEvent::Pushed { peer_id } => {}
         }
     }
 }
