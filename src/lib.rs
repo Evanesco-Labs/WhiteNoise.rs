@@ -12,3 +12,7 @@ pub mod request_proto {
 pub mod relay_proto {
     include!(concat!(env!("OUT_DIR"), "/relay_proto.rs"));
 }
+
+pub mod payload_proto {
+    include!(concat!(env!("OUT_DIR"), "/payload_proto.rs"));
+}
