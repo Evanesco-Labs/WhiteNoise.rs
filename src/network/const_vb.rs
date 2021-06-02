@@ -1,0 +1,1 @@
+pub const BUF_LEN:usize = 65536;
