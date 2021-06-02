@@ -2975,6 +2975,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bs58",
+ "bytes 1.0.1",
  "futures",
  "libp2p",
  "log",
@@ -2983,6 +2984,7 @@ dependencies = [
  "prost-build",
  "rusty-leveldb",
  "smallvec",
+ "snow",
  "tokio",
  "uuid",
  "void",

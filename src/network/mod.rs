@@ -1,4 +1,5 @@
 pub mod protocols;
-mod utils;
-mod session;
-mod whitenoise_behaviour;
+pub mod utils;
+pub mod session;
+pub mod whitenoise_behaviour;
+pub mod connection;
