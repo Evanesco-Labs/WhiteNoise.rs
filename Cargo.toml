@@ -19,6 +19,7 @@ bs58 = "0.4.0"
 multihash = { version = "0.13", default-features = false, features = ["arb"] }
 snow = "0.7.2"
 bytes = "1"
+eth-ecies = { git = "https://github.com/tritone11/rust-eth-ecies" , rev = "cb07b9f"}
 
 [build-dependencies]
 prost-build = "0.7"
