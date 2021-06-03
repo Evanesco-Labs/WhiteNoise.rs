@@ -17,3 +17,7 @@ pub mod relay_proto {
 pub mod payload_proto {
     include!(concat!(env!("OUT_DIR"), "/payload_proto.rs"));
 }
+
+pub mod gossip_proto {
+    include!(concat!(env!("OUT_DIR"), "/gossip_proto.rs"));
+}
