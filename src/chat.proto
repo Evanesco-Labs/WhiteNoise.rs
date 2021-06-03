@@ -1,0 +1,7 @@
+syntax = "proto3";
+package chat_proto;
+
+message ChatMessage {
+    string peerID = 1;
+    bytes data = 2;
+}
