@@ -7,3 +7,4 @@ pub mod node;
 mod const_vb;
 mod relay_event_handler;
 mod cmd_event_handler;
+mod proxy_event_handler;
