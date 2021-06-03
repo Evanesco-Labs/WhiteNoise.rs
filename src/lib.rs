@@ -21,3 +21,7 @@ pub mod payload_proto {
 pub mod gossip_proto {
     include!(concat!(env!("OUT_DIR"), "/gossip_proto.rs"));
 }
+
+pub mod chat_proto {
+    include!(concat!(env!("OUT_DIR"), "/chat_proto.rs"));
+}
