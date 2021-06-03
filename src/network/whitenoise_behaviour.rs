@@ -1,6 +1,7 @@
 use libp2p::{PeerId, gossipsub, identify, Swarm};
 use smallvec::SmallVec;
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc};
+use futures::{channel::oneshot};
 use crate::network::protocols::proxy_protocol::{ProxyRequest, ProxyCodec, ProxyResponse};
 use crate::network::protocols::ack_protocol::{AckRequest, AckCodec, AckResponse};
 use crate::network::protocols::cmd_protocol::{CmdRequest, CmdCodec, CmdResponse};

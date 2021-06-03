@@ -3387,6 +3387,7 @@ dependencies = [
  "multihash",
  "prost",
  "prost-build",
+ "rand 0.8.3",
  "rusty-leveldb",
  "smallvec",
  "snow",
