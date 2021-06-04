@@ -121,7 +121,7 @@ pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: Wrap
     if session.as_ref().unwrap().ready() {
         forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
     } else {
-        error!("relay stream not ready");
+        debug!("relay stream not ready");
     }
 }
 
@@ -166,7 +166,7 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
         if session.as_ref().unwrap().ready() {
             forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
         } else {
-            error!("relay stream not ready");
+            debug!("relay stream not ready");
         }
     }
 }
@@ -302,7 +302,7 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
         if session.as_ref().unwrap().ready() {
             forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
         } else {
-            error!("relay stream not ready");
+            debug!("relay stream not ready");
         }
     }
 }
