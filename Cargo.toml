@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Evanesco-Labs"]
 edition = "2018"
 
-
-
-
 [dependencies]
 libp2p = {version = "0.37.1",features = ["tcp-tokio"]}
 tokio = { version = "1.4", features = ["fs", "sync", "time","macros","rt-multi-thread","process","net","io-util","io-std"] }
@@ -33,3 +30,15 @@ clap = "2.27.0"
 
 [build-dependencies]
 prost-build = "0.7"
+
+[lib]
+
+[features]
+prod = []
+local-test = []
+default = ["prod"]
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
