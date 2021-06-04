@@ -187,9 +187,9 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<AckRequest, AckResponse>>
                         let AckRequest(data) = request.clone();
                         let mut guard = self.event_bus.write().unwrap();
                         debug!("receive {}", data.command_id);
-                        let mut sender_option = (*guard).remove(&(data.command_id));
+                        let sender_option = (*guard).remove(&(data.command_id));
                         match sender_option {
-                            Some(mut sender) => {
+                            Some(sender) => {
                                 debug!("ack prepare to send");
                                 sender.send(request.clone());
                             }

@@ -301,7 +301,7 @@ pub fn new_relay_circuit_success(session_id: &String) -> relay_proto::Relay {
     let circuit_success = relay_proto::CircuitSuccess { session_id: session_id.clone() };
     let mut data = Vec::new();
     circuit_success.encode(&mut data).unwrap();
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Success as i32,
         data: data,

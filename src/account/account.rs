@@ -9,7 +9,7 @@ pub struct Account {}
 
 impl Account {
     pub fn get_default_account_keypair(path: &str) -> Keypair {
-        let mut opt = rusty_leveldb::Options::default();
+        let opt = rusty_leveldb::Options::default();
         let mut db = DB::open(path, opt).unwrap();
         let default_account_bytes_option = db.get(b"default");
         match default_account_bytes_option {
