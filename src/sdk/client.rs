@@ -64,8 +64,8 @@ pub trait Client {
 }
 
 impl WhiteNoiseClient {
-    pub fn init(bootstrap_addr_str: String) -> Self {
-        let node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client);
+    pub fn init(bootstrap_addr_str: String, key_type: crate::account::key_types::KeyType) -> Self {
+        let mut node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client, None, key_type);
         let parts: Vec<&str> = bootstrap_addr_str.split('/').collect();
         let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
         let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();

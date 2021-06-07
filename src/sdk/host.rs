@@ -42,11 +42,16 @@ pub enum RunMode {
     Server,
 }
 
-pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: std::option::Option<String>, run_mode: RunMode) -> Node {
+pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: std::option::Option<String>, run_mode: RunMode, key_pair: Option<libp2p::identity::Keypair>, key_type: crate::account::key_types::KeyType) -> Node {
     let (node_request_sender, node_request_receiver) = mpsc::unbounded_channel();
-    let id_keys = Account::get_default_account_keypair("./db");
+
+    let id_keys = match key_pair {
+        None => Account::get_default_account_keypair("./db", key_type),
+        Some(x) => x
+    };
+
     let peer_id = id_keys.public().into_peer_id();
-    info!("local peer id is {:?}", peer_id);
+    info!("local peer id: {:?}", peer_id);
 
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
     let trans = TokioTcpConfig::new()

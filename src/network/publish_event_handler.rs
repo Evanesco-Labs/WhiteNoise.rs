@@ -105,9 +105,8 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                     index = index % nodeinfos.len();
                     let id = nodeinfos.get(index).unwrap().id.clone();
                     if !invalid.contains_key(&id) && id != node.get_id() && id != negotiate.join {
-                        let remote_client_white_noise_id = node.client_peer_map.read().unwrap().get(&id).and_then(|x| Some(x.clone()));
-
-                        if remote_client_white_noise_id.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id.unwrap().as_str()) != encrypted_neg.des {
+                        let remote_client_white_noise_id_hash = node.client_peer_map.read().unwrap().get(&id).and_then(|x| Some(x.clone()));
+                        if remote_client_white_noise_id_hash.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id_hash.unwrap().as_str()) != encrypted_neg.des {
                             relay = PeerId::from_bytes(bs58::decode(id).into_vec().unwrap().as_slice()).unwrap();
                             break;
                         }

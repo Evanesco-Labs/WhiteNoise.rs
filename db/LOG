@@ -1,4 +1,0 @@
-Recovered manifest with next_file=3 manifest_num=2 log_num=0 prev_log_num=0 last_seq=0
-reusing manifest "./db/MANIFEST-000001"
-Recovering log file "/Users/houmy/Documents/rustPro/WhiteNoise.rs/db/000003.log"
-reusing log file "/Users/houmy/Documents/rustPro/WhiteNoise.rs/db/000003.log"

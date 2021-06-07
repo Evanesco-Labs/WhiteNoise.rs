@@ -266,7 +266,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
 
 pub fn handle_read_shake(data: Vec<u8>, noise: &mut HandshakeState, buf: &mut Vec<u8>) -> usize {
     let buf_len = data[0] as usize * 256 + data[1] as usize;
-    info!("relay data len:{},real buf len:{}", data.len(), buf_len);
+    debug!("relay data len:{},real buf len:{}", data.len(), buf_len);
     let payload = data[2..(2 + buf_len)].to_vec();
     return noise.read_message(&payload, buf).unwrap();
 }

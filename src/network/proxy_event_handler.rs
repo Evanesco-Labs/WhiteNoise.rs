@@ -19,8 +19,6 @@ use super::utils::from_request_get_id;
 use multihash::{Code, MultihashDigest};
 
 pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver<NodeProxyRequest>, mut node: Node) {
-    let secret_key = Account::from_keypair_to_secretkey_bytes(&node.keypair);
-    let secret = Secret::from_slice(&secret_key).unwrap();
     loop {
         let proxy_request_option = proxy_request_receiver.recv().await;
         if proxy_request_option.is_some() {
@@ -50,10 +48,20 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                 let mut ack_response = command_proto::Ack { command_id: request.req_id, result: false, data: Vec::new() };
 
                 let decrypt = request_proto::Decrypt::decode(request.data.as_slice()).unwrap();
-                let decrypt_res = ecies::decrypt(&secret, b"", &decrypt.cypher);
 
-                if decrypt_res.is_ok() {
-                    let plain_text = decrypt_res.unwrap();
+                let decrypt_res = match node.keypair {
+                    identity::Keypair::Ed25519(ref x) => {
+                        crate::account::account::Account::ecies_ed25519_decrypt(&node.keypair, &decrypt.cypher).unwrap()
+                    }
+                    identity::Keypair::Secp256k1(ref x) => {
+                        crate::account::account::Account::ecies_decrypt(&node.keypair, &decrypt.cypher).unwrap()
+                    }
+                    _ => {
+                        panic!("keypair not ed25519 or secp256k1");
+                    }
+                };
+                {
+                    let plain_text = decrypt_res;
                     let neg = gossip_proto::Negotiate::decode(plain_text.as_slice()).unwrap();
                     ack_response.result = true;
                     ack_response.data = plain_text;
@@ -63,8 +71,6 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                         ack_request: Some(ack_request),
                     };
                     node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
-                } else {
-                    decrypt_res.unwrap();
                 }
             } else if request.reqtype == (request_proto::Reqtype::NegPlainText as i32) {
                 debug!("receive encrypt request");
@@ -74,13 +80,12 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                 let guard = node.circuit_task.write().unwrap();
                 let pub_bytes = (*guard).get(&neg_plaintext.session_id).unwrap();
 
-                let secp_pub_key = identity::secp256k1::PublicKey::decode(pub_bytes).unwrap();
-                let serialized = secp_pub_key.encode_uncompressed();
+                let crypted_text = if pub_bytes[0] == ('0' as u8){
+                    crate::account::account::Account::ecies_ed25519_encrypt(&pub_bytes[1..], &neg_plaintext.neg)
+                } else {
+                    crate::account::account::Account::ecies_encrypt(&pub_bytes[1..], &neg_plaintext.neg)
+                };
 
-                let mut public_key = Public::default();
-                public_key.copy_from_slice(&serialized[1..65]);
-
-                let crypted_text = ecies::encrypt(&public_key, b"", &neg_plaintext.neg).unwrap();
                 ack_response.result = true;
                 ack_response.data = crypted_text;
                 let ack_request = AckRequest(ack_response);
@@ -252,9 +257,8 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
             index = index % nodeinfos.len();
             let id = nodeinfos.get(index).unwrap().id.clone();
             if !invalid.contains_key(&id) && id != node.get_id() && id != remote_peer_id.to_base58() {
-                let remote_client_white_noise_id = node.client_peer_map.read().unwrap().get(&id).and_then(|x| Some(x.clone()));
-
-                if remote_client_white_noise_id.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id.unwrap().as_str()) != new_circuit.to {
+                let remote_client_white_noise_id_hash = node.client_peer_map.read().unwrap().get(&id).and_then(|x| Some(x.clone()));
+                if remote_client_white_noise_id_hash.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id_hash.unwrap().as_str()) != new_circuit.to {
                     join = PeerId::from_bytes(bs58::decode(id).into_vec().unwrap().as_slice()).unwrap();
                     break;
                 }

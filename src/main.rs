@@ -4,6 +4,7 @@ use libp2p::{
     identity,
     noise,
 };
+use prost::Message;
 
 pub mod request_proto {
     include!(concat!(env!("OUT_DIR"), "/request_proto.rs"));
@@ -74,6 +75,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .short("b")
                 .long("bootstrap")
                 .help("MultiAddress of the node to bootstrap from.")
+                .takes_value(true))
+            .arg(Arg::with_name("ktype")
+                .long("keytype")
+                .help("key type")
                 .takes_value(true)))
         .subcommand(SubCommand::with_name("chat")
             .arg(Arg::with_name("bootstrap")
@@ -89,6 +94,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .arg(Arg::with_name("nick")
                 .long("nick")
                 .help("Nick name for chatting.")
+                .takes_value(true))
+            .arg(Arg::with_name("ktype")
+                .long("keytype")
+                .help("key type")
                 .takes_value(true)))
         .get_matches();
 
@@ -96,7 +105,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if let Some(x) = args.subcommand_matches("chat") {
         let bootstrap_addr_str = x.value_of("bootstrap").unwrap();
         info!("bootstrap_addr:{}", bootstrap_addr_str);
-        let nick_name = String::from(x.value_of("nick").unwrap());
+        let nick_name = String::from(x.value_of("nick").unwrap_or("Alice"));
         info!("nick:{}", nick_name);
         let remote_whitenoise_id_option = x.value_of("node");
         let remote_whitenoise_id_str_option = match remote_whitenoise_id_option {
@@ -105,7 +114,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(String::from(remote_whitenoise_id))
             }
         };
-        start_client(String::from(bootstrap_addr_str), nick_name, remote_whitenoise_id_str_option.clone()).await;
+        let key_type = String::from(x.value_of("ktype").unwrap_or("ed25519"));
+        start_client(String::from(bootstrap_addr_str), nick_name, remote_whitenoise_id_str_option.clone(), key_type).await;
     } else if let Some(x) = args.subcommand_matches("start") {
         let bootstrap_addr_str_option = x.value_of("bootstrap");
         info!("bootstrap_addr:{:?}", bootstrap_addr_str_option);
@@ -121,12 +131,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             None => None,
             Some(x) => Some(String::from(x))
         };
-        start_server(bootstrap_addr_option, port_option).await;
+        let key_type = String::from(x.value_of("ktype").unwrap_or("ed25519"));
+        start_server(bootstrap_addr_option, port_option, key_type).await;
     }
     #[cfg(feature = "local-test")]
     if 1 == 1 {
         let bootstrap_addr_str = "/ip4/127.0.0.1/tcp/3331/p2p/16Uiu2HAmSrxoDJCvBH4fNaCf4mE3x2XiByLcvooZWFGUz3VJ2mvt";
         let nick_name = String::from("bob");
+        let key_type = String::from("ed25519");
         let remote_whitenoise_id_option = if 1 == 1 {
             None
         } else {
@@ -139,11 +151,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(String::from(remote_whitenoise_id))
             }
         };
-        start_client(String::from(bootstrap_addr_str), nick_name, remote_whitenoise_id_str_option.clone()).await;
+        start_client(String::from(bootstrap_addr_str), nick_name, remote_whitenoise_id_str_option.clone(), key_type).await;
     } else {
         let bootstrap_addr_str_option = Some("/ip4/127.0.0.1/tcp/3331/p2p/16Uiu2HAmBb5gidxpKq8J8UGHkzwoonjotTZc47SwMYsASsLyZbxd");
         let port_str_option = Some("3335");
-
+        let key_type = String::from("ed25519");
         let bootstrap_addr_option = match bootstrap_addr_str_option {
             None => None,
             Some(bootstrap_addr_str) => {
@@ -154,14 +166,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             None => None,
             Some(x) => Some(String::from(x))
         };
-        start_server(bootstrap_addr_option, port_option).await;
+        start_server(bootstrap_addr_option, port_option, key_type).await;
     }
     Ok(())
 }
 
-pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Option<String>) {
+pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Option<String>, key_type: String) {
     info!("run_mode:{}", RunMode::Server as i32);
-    let mut node = host::start(port_option, bootstrap_addr_option, RunMode::Server);
+    let mut node = host::start(port_option, bootstrap_addr_option, RunMode::Server, None, crate::account::key_types::KeyType::from_str(key_type.as_str()));
     loop {
         let wraped_stream = node.wait_for_relay_stream().await;
         debug!("{} have connected", wraped_stream.remote_peer_id.to_base58());
@@ -169,12 +181,12 @@ pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Op
     }
 }
 
-pub async fn start_client(bootstrap_addr_str: String, nick_name: String, remote_whitenoise_id_option: Option<String>) {
+pub async fn start_client(bootstrap_addr_str: String, nick_name: String, remote_whitenoise_id_option: Option<String>, key_type: String) {
     let parts: Vec<&str> = bootstrap_addr_str.split('/').collect();
     let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
     info!("bootstrap peer id:{}", bootstrap_peer_id_str);
 
-    let mut whitenoise_client = WhiteNoiseClient::init(bootstrap_addr_str);
+    let mut whitenoise_client = WhiteNoiseClient::init(bootstrap_addr_str, crate::account::key_types::KeyType::from_str(key_type.as_str()));
 
     let peer_list = whitenoise_client.get_main_net_peers(10).await;
     let mut index = rand::random::<usize>();
@@ -201,20 +213,20 @@ pub async fn answer(mut client: WhiteNoiseClient, nick_name: String) {
     loop {
         tokio::select! {
             Ok(Some(line)) = stdin.next_line() =>{
-                let chat_message = ChatMessage{peer_id:nick_name.clone(),data: line.as_bytes().to_vec()};
-                let mut chat_message_str = serde_json::to_string(&chat_message).unwrap();
-                let mut payload = Vec::with_capacity(4+chat_message_str.len());
-                payload.put_u32(chat_message_str.len() as u32);
-                payload.chunk_mut().copy_from_slice(chat_message_str.as_bytes());
+                let chat_message = chat_proto::ChatMessage{peer_id: nick_name.clone(),data: line.as_bytes().to_vec()};
+                let mut chat_message_encode = Vec::new();
+                chat_message.encode(&mut chat_message_encode).unwrap();
+                let mut payload = Vec::with_capacity(4+chat_message_encode.len());
+                payload.put_u32(chat_message_encode.len() as u32);
+                payload.chunk_mut().copy_from_slice(chat_message_encode.as_slice());
                 unsafe{
-                    payload.advance_mut(chat_message_str.len());
+                    payload.advance_mut(chat_message_encode.len());
                 }
                 client.send_message(session_id.as_str(), &payload).await;
             }
             data = circuit_conn.read(&mut buf) =>{
-                let chat_message: ChatMessage = serde_json::from_slice(&data).unwrap();
+            let chat_message = chat_proto::ChatMessage::decode(data.as_slice()).unwrap();
                 println!("receive {},message:{}",chat_message.peer_id,String::from_utf8_lossy(&chat_message.data));
-
             }
         }
     }
@@ -237,20 +249,21 @@ pub async fn caller(remote_whitenoise_id: String, mut client: WhiteNoiseClient, 
     loop {
         tokio::select! {
             Ok(Some(line)) = stdin.next_line() =>{
-                let chat_message = ChatMessage{peer_id:nick_name.clone(),data: line.as_bytes().to_vec()};
-                let mut chat_message_str = serde_json::to_string(&chat_message).unwrap();
-                let chat_message_str_vec = unsafe{
-                    chat_message_str.as_mut_vec()
-                };
-                let mut payload = Vec::with_capacity(4+chat_message_str_vec.len());
-                payload.put_u32(chat_message_str_vec.len() as u32);
-                payload.append(chat_message_str_vec);
-                // circuit_conn.write(&payload, &mut buf).await;
+                let chat_message = chat_proto::ChatMessage{peer_id: nick_name.clone(),data: line.as_bytes().to_vec()};
+                let mut chat_message_encode = Vec::new();
+                chat_message.encode(&mut chat_message_encode).unwrap();
+                let mut payload = Vec::with_capacity(4+chat_message_encode.len());
+                payload.put_u32(chat_message_encode.len() as u32);
+                payload.chunk_mut().copy_from_slice(chat_message_encode.as_slice());
+                unsafe{
+                    payload.advance_mut(chat_message_encode.len());
+                }
                 client.send_message(session_id.as_str(), &payload).await;
             }
             data = circuit_conn.read(&mut buf) =>{
-                let chat_message: ChatMessage = serde_json::from_slice(&data).unwrap();
+            let chat_message = chat_proto::ChatMessage::decode(data.as_slice()).unwrap();
                 println!("receive {},message:{}",chat_message.peer_id,String::from_utf8_lossy(&chat_message.data));
+
             }
         }
     }
