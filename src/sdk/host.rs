@@ -216,6 +216,11 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                     let mut addr = String::from("/ip4/0.0.0.0/tcp/");
                     addr.push_str(port.as_str());
                     Swarm::listen_on(&mut swarm1, addr.parse().unwrap()).unwrap();
+                    let mut local_multi_addr = String::from("/ip4/127.0.0.1/tcp/");
+                    local_multi_addr.push_str(port.as_str());
+                    local_multi_addr.push_str("/p2p/");
+                    local_multi_addr.push_str(peer_id.to_string().as_str());
+                    info!("local Multiaddress: {}", local_multi_addr);
                 }
             }
             tokio::spawn(whitenoise_behaviour::whitenoise_server_event_loop(swarm1, node_request_receiver));
