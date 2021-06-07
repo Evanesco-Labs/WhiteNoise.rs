@@ -20,12 +20,12 @@ impl CircuitConn {
         }
         let data = self.in_channel_receiver.lock().await.recv().await.unwrap();
         let buf_len = data[0] as usize * 256 + data[1] as usize;
-        info!("relay data len:{},real buf len:{}", data.len(), buf_len);
+        debug!("relay data len:{},real buf len:{}", data.len(), buf_len);
 
         let payload = data[2..(2 + buf_len)].to_vec();
         let len = self.transport_state.clone().unwrap().lock().await.read_message(&payload, buf).unwrap();
         let real_size = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-        info!("real size:{},buf len:{}", real_size, len);
+        debug!("real size:{},buf len:{}", real_size, len);
         return buf[4..(real_size + 4)].to_vec();
     }
     pub async fn write(&mut self, payload: &[u8], buf: &mut [u8]) {

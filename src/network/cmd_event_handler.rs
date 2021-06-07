@@ -14,8 +14,6 @@ use super::utils::{new_relay_circuit_success, new_relay_probe, forward_relay, se
 
 
 pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<NodeCmdRequest>, mut node: Node) {
-    let secret_key = Account::from_keypair_to_secretkey_bytes(&node.keypair);
-    let secret = Secret::from_slice(&secret_key).unwrap();
     loop {
         let cmd_request_option = cmd_request_receiver.recv().await;
         if cmd_request_option.is_some() {

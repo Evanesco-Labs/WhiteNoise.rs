@@ -254,23 +254,17 @@ impl Node {
     }
 
     pub async fn dial(&mut self, remote_whitenoise_id: String) -> String {
-        let public_key_secp256k1 = match self.keypair.public() {
-            libp2p::identity::PublicKey::Secp256k1(k) => k,
-            _ => {
-                panic!("keypair format not secp256k1");
-            }
-        };
-        let local_whitenoise_id = bs58::encode(public_key_secp256k1.encode()).into_string();
+        let local_whitenoise_id = crate::account::account::Account::from_keypair_to_whitenoise_id(&self.keypair);
 
         let session_id = generate_session_id(remote_whitenoise_id.clone(), local_whitenoise_id.clone());
         info!("session_id:{}", session_id);
-        self.circuit_task.write().unwrap().insert(session_id.clone(), bs58::decode(remote_whitenoise_id.clone()).into_vec().unwrap());
+        let (index, pub_bytes) = remote_whitenoise_id.split_at(1);
+        let mut composit_bytes: Vec<u8> = Vec::new();
+        composit_bytes.push(index.as_bytes()[0]);
+        bs58::decode(pub_bytes).into_vec().unwrap().iter().for_each(|x| composit_bytes.push(x.clone()));
+        self.circuit_task.write().unwrap().insert(session_id.clone(), composit_bytes);
 
         //new relay stream
-        let remote_pub_key_bytes = bs58::decode(remote_whitenoise_id.as_str()).into_vec().unwrap();
-        let remote_pub_key = libp2p::identity::secp256k1::PublicKey::decode(&remote_pub_key_bytes).unwrap();
-        let remote_peer_id = PeerId::from_public_key(libp2p::identity::PublicKey::Secp256k1(remote_pub_key));
-
         let stream = self.new_session_to_peer(&self.proxy_id.unwrap(), session_id.clone(), crate::network::session::SessionRole::CallerRole as i32, crate::network::session::SessionRole::EntryRole as i32).await.unwrap();
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -283,7 +277,6 @@ impl Node {
             transport_state: None,
         };
         self.circuit_map.write().unwrap().insert(session_id.clone(), circuit_conn);
-
         self.new_circuit(remote_whitenoise_id, local_whitenoise_id, self.get_id(), session_id.clone(), self.proxy_id.clone().unwrap()).await;
         return session_id;
     }
@@ -298,6 +291,7 @@ impl Node {
             return;
         }
         let mut buf = [0u8; BUF_LEN];
+        log::debug!("message bytes: {:?}", message);
         circuit_conn.write(message, &mut buf).await;
     }
 

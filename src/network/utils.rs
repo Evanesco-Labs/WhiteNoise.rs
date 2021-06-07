@@ -11,7 +11,7 @@ use std::io;
 use libp2p::futures::TryFutureExt;
 use snow::{TransportState, HandshakeState};
 use libp2p::core::upgrade::ReadOneError;
-use log::{info};
+use log::{info,debug};
 
 pub fn from_request_get_id(request: &request_proto::Request) -> String {
     let mut buf = Vec::new();
@@ -27,7 +27,8 @@ pub fn from_bytes_get_id(buf: &[u8]) -> String {
 }
 
 pub fn from_whitenoise_to_hash(whitenoise_id: &str) -> String {
-    let whitenoise_bytes = bs58::decode(whitenoise_id).into_vec().unwrap();
+    let (index, pub_bytes) = whitenoise_id.split_at(1);
+    let whitenoise_bytes = bs58::decode(pub_bytes).into_vec().unwrap();
     let hash_algorithm = Code::Sha2_256;
     let hash = hash_algorithm.digest(&whitenoise_bytes);
     let zz = hash.to_bytes()[2..].to_vec();
@@ -233,9 +234,9 @@ pub async fn read_payload_arc(stream: WrappedStream) -> Vec<u8> {
     };
 
     let relay_msg = relay_proto::RelayMsg::decode(relay.data.as_slice()).unwrap();
-    info!("read decrypt relay msg data len:{}", relay_msg.data.len());
+    debug!("read decrypt relay msg data len:{}", relay_msg.data.len());
     let buf_len = relay_msg.data[0] as usize * 256 + relay_msg.data[1] as usize;
-    info!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
+    debug!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
     relay_msg.data[2..(2 + buf_len)].to_vec()
 }
 
@@ -249,9 +250,9 @@ pub async fn read_payload(stream: &mut NegotiatedSubstream) -> Vec<u8> {
     };
 
     let relay_msg = relay_proto::RelayMsg::decode(relay.data.as_slice()).unwrap();
-    info!("read decrypt relay msg data len:{}", relay_msg.data.len());
+    debug!("read decrypt relay msg data len:{}", relay_msg.data.len());
     let buf_len = relay_msg.data[0] as usize * 256 + relay_msg.data[1] as usize;
-    info!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
+    debug!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
     relay_msg.data[2..(2 + buf_len)].to_vec()
 }
 
