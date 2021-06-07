@@ -84,7 +84,7 @@ Your unique **WhiteNoiseID** is shown in log, this is your "number" for calls:
 [2021-06-07T07:59:21.443Z INFO  whitenoisers::network::node] local whitenoise id:0HejBsyG9SPV5YB91Xf2zXiNGJQagRL3yAq7qtCVum4Pw
 ```
 
-Start a chat *Caller* and dial the *Answer* with this command, fill in the `-n` flag with *Answer*'s *WhiteNoiseID*:
+Start a chat **Caller** and dial the **Answer** with this command, fill in the `-n` flag with *Answer*'s *WhiteNoiseID*:
 
 ```shell
 ./whitenoisers chat -b /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWMNFaCGrnfMomi4TTMvQsKMGVwoxQzHo6P49ue6Fwq6zU --nick Bob -n 0HejBsyG9SPV5YB91Xf2zXiNGJQagRL3yAq7qtCVum4Pw
