@@ -7,7 +7,7 @@ use libp2p::{
 use crate::{request_proto};
 use futures::{prelude::*};
 
-use tokio::io::{self};
+use std::io;
 use prost::Message;
 
 use log::{debug};

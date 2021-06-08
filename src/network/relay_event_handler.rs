@@ -1,7 +1,7 @@
 use libp2p::{noise};
 use crate::{command_proto, relay_proto};
 use prost::Message;
-use tokio::sync::mpsc;
+use futures::{StreamExt, channel::mpsc};
 use log::{info, debug, error};
 use super::{protocols::relay_behaviour::WrappedStream};
 use super::protocols::ack_protocol::{AckRequest};
@@ -150,7 +150,7 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
             let cc = (*guard).get(&relay_success.session_id).unwrap();
             cc.clone()
         };
-        tokio::spawn(process_handshake(circuit_conn, true, relay_success.session_id.clone(), node.clone()));
+        async_std::task::spawn(process_handshake(circuit_conn, true, relay_success.session_id.clone(), node.clone()));
         return;
     }
     if session.as_ref().unwrap().session_role == (SessionRole::AnswerRole as i32) {
@@ -159,7 +159,7 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
             let cc = (*guard).get(&relay_success.session_id).unwrap();
             cc.clone()
         };
-        tokio::spawn(process_handshake(circuit_conn, false, relay_success.session_id.clone(), node.clone()));
+        async_std::task::spawn(process_handshake(circuit_conn, false, relay_success.session_id.clone(), node.clone()));
         return;
     } else {
         debug!("relay event handler start handle success,not caller,not not answer");
@@ -196,7 +196,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
         write_handshake_payload_arc(circuit_conn.out_stream.clone(), &buf[..len], len, &session_id).await;
         info!("write nil");
         // <- s, se
-        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.recv().await.unwrap(), &mut noise, &mut buf);
+        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
         //     //verify 
         info!("read identity");
         let pubkey = noise.get_remote_static().unwrap();
@@ -209,7 +209,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
 
         let mut noise = noise.into_transport_mode().unwrap();
 
-        circuit_conn.transport_state = Some(std::sync::Arc::new(tokio::sync::Mutex::new(noise)));
+        circuit_conn.transport_state = Some(std::sync::Arc::new(std::sync::Mutex::new(noise)));
         {
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
@@ -239,7 +239,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             builder.local_private_key(&noise_keys.secret().as_ref()).build_responder().unwrap();
         // <- e
         //crate::network::utils::read_handshake_payload_arc(stream.clone(), &mut noise, &mut buf).await;
-        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.recv().await.unwrap(), &mut noise, &mut buf);
+        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
 
         // -> e, ee, s, es
         let payload = generate_handshake_payload(noise_keys.into_identity()).await;
@@ -249,7 +249,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
 
         // <- s, se
         //let len = crate::network::utils::read_handshake_payload_arc(stream.clone(), &mut noise, &mut buf).await;
-        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.recv().await.unwrap(), &mut noise, &mut buf);
+        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
         //verify 
 
         let pubkey = noise.get_remote_static().unwrap();
@@ -257,7 +257,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
         info!("verify success:{}", verify_success);
 
         let mut noise = noise.into_transport_mode().unwrap();
-        circuit_conn.transport_state = Some(std::sync::Arc::new(tokio::sync::Mutex::new(noise)));
+        circuit_conn.transport_state = Some(std::sync::Arc::new(std::sync::Mutex::new(noise)));
         {
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
@@ -298,7 +298,7 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
         let circuit_conn_opt = (*guard).get(&relay_msg.session_id);
         if circuit_conn_opt.is_some() {
             let circuit_conn = circuit_conn_opt.unwrap();
-            circuit_conn.in_channel_sender.send(relay_msg.data);
+            circuit_conn.in_channel_sender.unbounded_send(relay_msg.data);
         }
     } else {
         if session.as_ref().unwrap().ready() {
@@ -365,11 +365,11 @@ pub async fn handle_set_session(mut node: Node, relay_set_session: relay_proto::
 pub async fn add_circuit_conn(node: Node, session_id: String, stream: WrappedStream) {
     let mut guard = node.circuit_map.write().unwrap();
     if !(*guard).contains_key(&session_id) {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::unbounded();
         let circuit_conn = CircuitConn {
             id: session_id.clone(),
             out_stream: stream.clone(),
-            in_channel_receiver: std::sync::Arc::new(tokio::sync::Mutex::new(receiver)),
+            in_channel_receiver: std::sync::Arc::new(futures::lock::Mutex::new(receiver)),
             in_channel_sender: sender,
             transport_state: None,
         };

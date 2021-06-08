@@ -1,4 +1,4 @@
-use tokio::sync::mpsc;
+use futures::{StreamExt, channel::mpsc};
 use crate::network::protocols::relay_behaviour::WrappedStream;
 use crate::relay_proto;
 
@@ -16,17 +16,6 @@ pub enum SessionRole {
 pub struct PairStream {
     pub early_stream: std::option::Option<WrappedStream>,
     pub later_stream: std::option::Option<WrappedStream>,
-}
-
-pub struct LaterChannel {
-    pub inbound_receiver: std::sync::Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<relay_proto::Relay>>>,
-    pub outbound_sender: mpsc::UnboundedSender<relay_proto::Relay>,
-}
-
-#[derive(Clone)]
-pub struct PairSender {
-    pub early_outbound_sender: mpsc::UnboundedSender<relay_proto::Relay>,
-    pub later_outbound_sender: mpsc::UnboundedSender<relay_proto::Relay>,
 }
 
 #[derive(Clone)]

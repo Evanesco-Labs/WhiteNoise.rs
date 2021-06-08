@@ -4,6 +4,7 @@ use libp2p::{
 };
 
 use crate::network::{connection::CircuitConn, node::Node};
+use futures::{StreamExt, channel::mpsc};
 
 use crate::sdk::{host, host::RunMode};
 use async_trait::async_trait;
@@ -13,11 +14,11 @@ pub async fn process_new_stream(mut node: Node) {
     loop {
         let mut stream = node.wait_for_relay_stream().await;
         info!("have new stream");
-        tokio::spawn(crate::network::relay_event_handler::relay_event_handler(stream.clone(), node.clone(), None));
+        async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(stream.clone(), node.clone(), None));
     }
 }
 
-pub async fn process_new_session(mut node: Node, sender: tokio::sync::mpsc::UnboundedSender<String>, exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>) {
+pub async fn process_new_session(mut node: Node, sender: futures::channel::mpsc::UnboundedSender<String>, exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>) {
     loop {
         let len = node.circuit_map.read().unwrap().len();
         if len > 0 {
@@ -33,12 +34,12 @@ pub async fn process_new_session(mut node: Node, sender: tokio::sync::mpsc::Unbo
                 let session_id = session_id_opt.unwrap();
                 let cc = circuit_conn.unwrap();
                 if cc.transport_state.is_some() {
-                    sender.send(session_id.clone());
+                    sender.unbounded_send(session_id.clone());
                     exist_session.lock().unwrap().insert(session_id, true);
                 }
             }
         }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        async_std::task::sleep(std::time::Duration::from_millis(50)).await;
     };
 }
 
@@ -47,7 +48,7 @@ pub struct WhiteNoiseClient {
     node: Node,
     bootstrap_addr_str: String,
     bootstrap_peer_id: PeerId,
-    new_connected_session: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<String>>>,
+    new_connected_session: std::sync::Arc<futures::lock::Mutex<futures::channel::mpsc::UnboundedReceiver<String>>>,
     exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>,
 }
 
@@ -70,15 +71,15 @@ impl WhiteNoiseClient {
         let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
         let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();
 
-        let (new_connected_sender, new_connected_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (new_connected_sender, new_connected_receiver) = futures::channel::mpsc::unbounded();
         let exist_session = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        tokio::spawn(process_new_stream(node.clone()));
-        tokio::spawn(process_new_session(node.clone(), new_connected_sender, exist_session.clone()));
+        async_std::task::spawn(process_new_stream(node.clone()));
+        async_std::task::spawn(process_new_session(node.clone(), new_connected_sender, exist_session.clone()));
         return WhiteNoiseClient {
             node: node,
             bootstrap_addr_str: bootstrap_addr_str,
             bootstrap_peer_id: bootstrap_peer_id,
-            new_connected_session: std::sync::Arc::new(tokio::sync::Mutex::new(new_connected_receiver)),
+            new_connected_session: std::sync::Arc::new(futures::lock::Mutex::new(new_connected_receiver)),
             exist_session: exist_session.clone(),
         };
     }
@@ -116,6 +117,6 @@ impl Client for WhiteNoiseClient {
         self.node.get_id()
     }
     async fn notify_next_session(&mut self) -> Option<String> {
-        self.new_connected_session.lock().await.recv().await
+        self.new_connected_session.lock().await.next().await
     }
 }

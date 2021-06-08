@@ -3,7 +3,7 @@ use whitenoise_behaviour::{AddPeerAddresses};
 use crate::{request_proto};
 use futures::{channel::oneshot};
 use prost::Message;
-use tokio::sync::mpsc;
+use futures::{StreamExt, channel::mpsc};
 use log::{info, debug};
 use super::{protocols::relay_behaviour::WrappedStream};
 use super::protocols::proxy_protocol::{ProxyRequest};
@@ -47,7 +47,7 @@ impl Node {
         return self.keypair.public().into_peer_id().to_base58();
     }
     pub async fn external_send_node_request_not_wait(&mut self, node_request: NodeRequest) {
-        self.node_request_sender.send(node_request);
+        self.node_request_sender.unbounded_send(node_request);
     }
     pub async fn external_send_node_request_and_wait(&mut self, key: String, node_request: NodeRequest) -> AckRequest {
         let (ack_request_sender, ack_request_receiver) = oneshot::channel();
@@ -55,7 +55,7 @@ impl Node {
             let mut guard = self.event_bus.write().unwrap();
             (*guard).insert(key, ack_request_sender);
         }
-        self.node_request_sender.send(node_request);
+        self.node_request_sender.unbounded_send(node_request);
         ack_request_receiver.await.unwrap()
     }
 
@@ -66,7 +66,7 @@ impl Node {
             remote_peer_id: remote_peer_id.clone(),
             remote_addr: remote_peer_addr_smallvec,
         };
-        self.node_request_sender.send(NodeRequest::AddPeerAddressesRequest(add_peer_addresses));
+        self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_peer_addresses));
 
         //generate request for mainnet peers
         let mainnets = request_proto::MainNetPeers {
@@ -107,13 +107,13 @@ impl Node {
                 remote_addr: addr_smallvec,
             };
             info!("mainnets address:{:?},peer_id:{:?}", add_addresses_after_getmainnets.remote_addr, add_addresses_after_getmainnets.remote_peer_id);
-            self.node_request_sender.send(NodeRequest::AddPeerAddressesRequest(add_addresses_after_getmainnets));
+            self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_addresses_after_getmainnets));
         }
         return new_peer_list;
     }
 
     pub async fn send_ack(&mut self, ack_request: NodeRequest) {
-        self.node_request_sender.send(ack_request);
+        self.node_request_sender.unbounded_send(ack_request);
     }
 
     pub async fn register_proxy(&mut self, remote_peer_id: PeerId) -> bool {
@@ -175,7 +175,7 @@ impl Node {
                 }
                 index = index + 1;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            async_std::task::sleep(std::time::Duration::from_millis(50)).await;
             wait_time = wait_time + 50;
         }
     }
@@ -187,7 +187,7 @@ impl Node {
                 if relay_stream_option.is_some() {
                     return relay_stream_option.unwrap();
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                async_std::task::sleep(std::time::Duration::from_millis(50)).await;
             }
         }
     }
@@ -196,8 +196,8 @@ impl Node {
         let node_new_stream = NodeNewStream { peer_id: peer_id.clone() };
         let node_request = NodeRequest::NewStreamRequest(node_new_stream);
         let node_c = self.clone();
-        tokio::spawn(async move {
-            let node_request_send_res = node_c.node_request_sender.send(node_request);
+        async_std::task::spawn(async move {
+            let node_request_send_res = node_c.node_request_sender.unbounded_send(node_request);
             if node_request_send_res.is_err() {
                 info!("send node request error");
             }
@@ -267,12 +267,12 @@ impl Node {
         //new relay stream
         let stream = self.new_session_to_peer(&self.proxy_id.unwrap(), session_id.clone(), crate::network::session::SessionRole::CallerRole as i32, crate::network::session::SessionRole::EntryRole as i32).await.unwrap();
 
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::unbounded();
 
         let circuit_conn = CircuitConn {
             id: session_id.clone(),
             out_stream: stream.clone(),
-            in_channel_receiver: std::sync::Arc::new(tokio::sync::Mutex::new(receiver)),
+            in_channel_receiver: std::sync::Arc::new(futures::lock::Mutex::new(receiver)),
             in_channel_sender: sender,
             transport_state: None,
         };
@@ -311,7 +311,7 @@ impl Node {
         }
         let ack_request = s.await.unwrap();
         let AckRequest(ack) = ack_request;
-        tokio::spawn(crate::network::relay_event_handler::relay_event_handler(wraped_stream.clone(), self.clone(), Some(session_id.clone())));
+        async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(wraped_stream.clone(), self.clone(), Some(session_id.clone())));
 
         if !self.session_map.read().unwrap().contains_key(&session_id) {
             let pair_stream = crate::network::session::PairStream { early_stream: Some(wraped_stream.clone()), later_stream: None };

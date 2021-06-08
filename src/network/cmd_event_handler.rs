@@ -6,7 +6,7 @@ use super::{protocols::cmd_protocol::CmdRequest};
 use super::protocols::ack_protocol::{AckRequest};
 use eth_ecies::{Secret};
 use super::whitenoise_behaviour::{NodeCmdRequest, NodeRequest, NodeAckRequest};
-use tokio::sync::mpsc::{UnboundedReceiver};
+use futures::{StreamExt,channel::mpsc::UnboundedReceiver};
 use crate::account::account::Account;
 use super::node::{Node};
 use super::session::SessionRole;
@@ -15,7 +15,7 @@ use super::utils::{new_relay_circuit_success, new_relay_probe, forward_relay, se
 
 pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<NodeCmdRequest>, mut node: Node) {
     loop {
-        let cmd_request_option = cmd_request_receiver.recv().await;
+        let cmd_request_option = cmd_request_receiver.next().await;
         if cmd_request_option.is_some() {
             let node_cmd_request = cmd_request_option.unwrap();
 
