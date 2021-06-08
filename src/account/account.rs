@@ -3,7 +3,7 @@ use libp2p::{
     identity::Keypair,
 };
 use rusty_leveldb::{DB};
-use log::info;
+use log::{info, debug};
 use eth_ecies::{Secret, Public, crypto::ecies, crypto::Error};
 use sha2::{Digest, Sha512};
 
@@ -38,7 +38,7 @@ impl Account {
                 keypair
             }
             Some(mut default_account_bytes) => {
-                info!("keypair exists");
+                info!("use existing keypair");
                 match key_type {
                     super::key_types::KeyType::ED25519 => identity::Keypair::Ed25519(identity::ed25519::Keypair::decode(&mut default_account_bytes).unwrap()),
                     super::key_types::KeyType::SECP256K1 => identity::Keypair::Secp256k1(identity::secp256k1::Keypair::from(identity::secp256k1::SecretKey::from_bytes(default_account_bytes).unwrap()))
@@ -87,11 +87,11 @@ impl Account {
     }
 
     pub fn ecies_ed25519_encrypt(pub_bytes: &[u8], plain: &[u8]) -> Vec<u8> {
-        info!("prepare to encrypt:{},data:{}", bs58::encode(pub_bytes).into_string(), bs58::encode(plain).into_string());
+        debug!("prepare to encrypt:{},data:{}", bs58::encode(pub_bytes).into_string(), bs58::encode(plain).into_string());
         let public = ecies_ed25519::PublicKey::from_bytes(pub_bytes).unwrap();
         let mut csprng = rand::thread_rng();
         let encrypted = ecies_ed25519::encrypt(&public, plain, &mut csprng).unwrap();
-        info!("encrypt result:{}", bs58::encode(&encrypted).into_string());
+        debug!("encrypt result:{}", bs58::encode(&encrypted).into_string());
         return encrypted;
     }
 
@@ -111,7 +111,7 @@ impl Account {
                     panic!("wrong format");
                 }
             };
-        info!("prepare to decrypt:{},data:{}", bs58::encode(ed25519_keypair.encode()).into_string(), bs58::encode(encrypted).into_string());
+        debug!("prepare to decrypt:{},data:{}", bs58::encode(ed25519_keypair.encode()).into_string(), bs58::encode(encrypted).into_string());
         let mut h: Sha512 = Sha512::default();
         let mut hash: [u8; 64] = [0u8; 64];
         let mut lower: [u8; 32] = [0u8; 32];

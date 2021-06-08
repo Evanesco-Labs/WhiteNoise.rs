@@ -125,7 +125,7 @@ impl Node {
         let mut data_buf = Vec::new();
         new_proxy.encode(&mut data_buf);
         let local_peer_id = PeerId::from(self.keypair.public());
-        info!("local peer id:{}", local_peer_id.to_base58());
+        debug!("local peer id:{}", local_peer_id.to_base58());
         let mut request = request_proto::Request {
             data: data_buf,
             req_id: String::from(""),

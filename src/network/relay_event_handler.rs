@@ -214,7 +214,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
         }
-        info!("Build circuit sucess!");
+        info!("Build circuit success!");
     } else {
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
             .into_authentic(&node.keypair)
@@ -262,7 +262,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
         }
-        info!("Build circuit sucess!");
+        info!("Build circuit success!");
     }
 }
 

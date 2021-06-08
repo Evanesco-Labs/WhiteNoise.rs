@@ -54,16 +54,14 @@ use crate::sdk::client::{WhiteNoiseClient, Client};
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let env = env_logger::Env::new().filter_or("MY_LOG", "info");
-    let mut builder = Builder::new();
-    builder.parse_env(env);
-    builder.format_timestamp_millis();
-    builder.init();
-
     let args = App::new("whitenoise")
         .version("1.0")
         .author("EVA-Labs")
         .about("whitenoise")
+        .arg(Arg::with_name("log")
+            .long("log")
+            .help("log level error, warn, info or debug")
+            .takes_value(true))
         .subcommand(SubCommand::with_name("start")
             .arg(Arg::with_name("port")
                 .help("listen port.")
@@ -100,12 +98,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .takes_value(true)))
         .get_matches();
 
+    let log_level = args.value_of("log").unwrap_or("info");
+    let env = env_logger::Env::new().filter_or("MY_LOG", log_level);
+    let mut builder = Builder::new();
+    builder.parse_env(env);
+    builder.format_timestamp_millis();
+    builder.init();
+
     #[cfg(feature = "prod")]
     if let Some(x) = args.subcommand_matches("chat") {
         let bootstrap_addr_str = x.value_of("bootstrap").unwrap();
         info!("bootstrap_addr:{}", bootstrap_addr_str);
         let nick_name = String::from(x.value_of("nick").unwrap_or("Alice"));
-        info!("nick:{}", nick_name);
+        info!("nick name: {}", nick_name);
         let remote_whitenoise_id_option = x.value_of("node");
         let remote_whitenoise_id_str_option = match remote_whitenoise_id_option {
             None => None,
@@ -185,7 +190,7 @@ pub async fn start_client(bootstrap_addr_str: String, nick_name: String, remote_
     let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
     info!("bootstrap peer id:{}", bootstrap_peer_id_str);
 
-    let mut whitenoise_client = WhiteNoiseClient::init(bootstrap_addr_str, crate::account::key_types::KeyType::from_str(key_type.as_str()));
+    let mut whitenoise_client = WhiteNoiseClient::init(bootstrap_addr_str, crate::account::key_types::KeyType::from_str(key_type.as_str()), None);
 
     let peer_list = whitenoise_client.get_main_net_peers(10).await;
     let mut index = rand::random::<usize>();
