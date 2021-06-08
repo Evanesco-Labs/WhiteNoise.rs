@@ -8,12 +8,13 @@ use futures::{StreamExt, channel::mpsc};
 
 use crate::sdk::{host, host::RunMode};
 use async_trait::async_trait;
-use log::info;
+use log::{info, debug};
+use crate::account::account::Account;
 
 pub async fn process_new_stream(mut node: Node) {
     loop {
         let mut stream = node.wait_for_relay_stream().await;
-        info!("have new stream");
+        debug!("have new stream");
         async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(stream.clone(), node.clone(), None));
     }
 }
@@ -45,7 +46,7 @@ pub async fn process_new_session(mut node: Node, sender: futures::channel::mpsc:
 
 
 pub struct WhiteNoiseClient {
-    node: Node,
+    pub node: Node,
     bootstrap_addr_str: String,
     bootstrap_peer_id: PeerId,
     new_connected_session: std::sync::Arc<futures::lock::Mutex<futures::channel::mpsc::UnboundedReceiver<String>>>,
@@ -65,8 +66,8 @@ pub trait Client {
 }
 
 impl WhiteNoiseClient {
-    pub fn init(bootstrap_addr_str: String, key_type: crate::account::key_types::KeyType) -> Self {
-        let mut node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client, None, key_type);
+    pub fn init(bootstrap_addr_str: String, key_type: crate::account::key_types::KeyType, keypair: Option<libp2p::identity::Keypair>) -> Self {
+        let mut node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client, keypair, key_type);
         let parts: Vec<&str> = bootstrap_addr_str.split('/').collect();
         let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
         let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();
@@ -114,7 +115,7 @@ impl Client for WhiteNoiseClient {
         self.node.handle_close_session(&session_id).await;
     }
     fn get_whitenoise_id(&self) -> String {
-        self.node.get_id()
+        Account::from_keypair_to_whitenoise_id(&self.node.keypair)
     }
     async fn notify_next_session(&mut self) -> Option<String> {
         self.new_connected_session.lock().await.next().await
