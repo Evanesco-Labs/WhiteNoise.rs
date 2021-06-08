@@ -68,7 +68,7 @@ simply fill in the bootstrap flag.
 
 ## Chat Example
 
-We implement an example chat application. Come try!
+We implement a P2P chatting application on WhiteNoise network as a demo. Try as follows:
 
 First start local WhiteNoise Network or get the Bootstrap **MultiAddress** of a remote WhiteNoise network.
 
@@ -78,8 +78,9 @@ Start an chat **Answer** waiting for others to dial with this command, add your 
 ./whitenoisers chat -b /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWMNFaCGrnfMomi4TTMvQsKMGVwoxQzHo6P49ue6Fwq6zU --nick Alice
 ```
 
-Your unique **WhiteNoiseID** is shown in log, this is your "number" for calls:
+Your unique **WhiteNoiseID** is shown in log, this is your "number" for calls. **WhiteNoiseID** keeps the same, if you start chat example in the same directory and using the same key type.
 
+The following shows the WhiteNoiseID in log:
 ```verilog
 [2021-06-07T07:59:21.443Z INFO  whitenoisers::network::node] local whitenoise id:0HejBsyG9SPV5YB91Xf2zXiNGJQagRL3yAq7qtCVum4Pw
 ```
@@ -91,6 +92,12 @@ Start a chat **Caller** and dial the **Answer** with this command, fill in the `
 ```
 
 After seeing "Build circuit success!" in log, both chat clients are able to type chatting on the command line!
+
+## Test 
+This command run tests:
+```shell
+cargo test
+```
 
 ## Contributing
 
