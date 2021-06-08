@@ -11,7 +11,7 @@ use std::io;
 use libp2p::futures::TryFutureExt;
 use snow::{TransportState, HandshakeState};
 use libp2p::core::upgrade::ReadOneError;
-use log::{info,debug};
+use log::{info, debug};
 
 pub fn from_request_get_id(request: &request_proto::Request) -> String {
     let mut buf = Vec::new();
@@ -335,9 +335,9 @@ pub async fn forward_relay(session: &Session, cur_stream_id: &str, relay: relay_
 
 pub async fn send_relay_twoway(session: &Session, relay: relay_proto::Relay) {
     if session.pair_stream.early_stream.is_some() {
-        tokio::spawn(crate::network::utils::write_relay_arc(session.pair_stream.early_stream.clone().unwrap(), relay.clone()));
+        async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.early_stream.clone().unwrap(), relay.clone()));
     }
     if session.pair_stream.later_stream.is_some() {
-        tokio::spawn(crate::network::utils::write_relay_arc(session.pair_stream.later_stream.clone().unwrap(), relay.clone()));
+        async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.later_stream.clone().unwrap(), relay.clone()));
     }
 }

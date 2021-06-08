@@ -9,7 +9,7 @@ use eth_ecies::{Secret, Public};
 use eth_ecies::crypto::ecies;
 use crate::models::client_info::ClientInfo;
 use super::whitenoise_behaviour::{self, NodeRequest, NodeProxyRequest, NodeAckRequest, PublishDataRequest};
-use tokio::sync::mpsc::{UnboundedReceiver};
+use futures::{StreamExt,channel::mpsc::UnboundedReceiver};
 use crate::account::account::Account;
 use super::utils::{from_whitenoise_to_hash, forward_relay, send_relay_twoway, new_relay_circuit_success, new_relay_probe};
 use super::node::{self, Node};
@@ -20,7 +20,7 @@ use multihash::{Code, MultihashDigest};
 
 pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver<NodeProxyRequest>, mut node: Node) {
     loop {
-        let proxy_request_option = proxy_request_receiver.recv().await;
+        let proxy_request_option = proxy_request_receiver.next().await;
         if proxy_request_option.is_some() {
             let node_proxy_request = proxy_request_option.unwrap();
             if node_proxy_request.peer_operation.is_some() {
@@ -70,7 +70,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                         remote_peer_id: node_proxy_request.remote_peer_id,
                         ack_request: Some(ack_request),
                     };
-                    node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
+                    node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 }
             } else if request.reqtype == (request_proto::Reqtype::NegPlainText as i32) {
                 debug!("receive encrypt request");
@@ -93,14 +93,14 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                     remote_peer_id: node_proxy_request.remote_peer_id,
                     ack_request: Some(ack_request),
                 };
-                node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
+                node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 debug!("send encrypt neg");
             } else if request.reqtype == (request_proto::Reqtype::MainNetPeers as i32) {
                 //info!("receive get main_net_peers");
                 let get_mainnets_request = request_proto::MainNetPeers::decode(request.data.as_slice()).unwrap();
                 let (sender, receiver) = futures::channel::oneshot::channel();
                 let get_main_nets = GetMainNets { command_id: request.req_id.clone(), remote_peer_id: node_proxy_request.remote_peer_id.clone(), num: get_mainnets_request.max, sender: sender };
-                node.node_request_sender.send(NodeRequest::GetMainNetsRequest(get_main_nets));
+                node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
                 let nodeinfos_res = receiver.await;
                 if nodeinfos_res.is_ok() {
                     let peers_list = request_proto::PeersList { peers: nodeinfos_res.unwrap() };
@@ -128,7 +128,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                         remote_peer_id: node_proxy_request.remote_peer_id,
                         ack_request: Some(ack_request),
                     };
-                    node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
+                    node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 } else {
                     {
                         //info!("prepare to  register proxy information in map:{}",node_proxy_request.remote_peer_id.to_base58());
@@ -147,7 +147,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                         remote_peer_id: node_proxy_request.remote_peer_id,
                         ack_request: Some(ack_request),
                     };
-                    node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
+                    node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 }
             } else if request.reqtype == (request_proto::Reqtype::UnRegisterType as i32) {
                 info!("receive unregister and going to remove register proxy information in map");
@@ -168,7 +168,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                     remote_peer_id: node_proxy_request.remote_peer_id,
                     ack_request: Some(ack_request),
                 };
-                node.node_request_sender.send(NodeRequest::AckRequest(node_ack_request));
+                node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
             }
         } else {
             info!("proxy sender all stop");
@@ -237,7 +237,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
 
     let (sender, receiver) = futures::channel::oneshot::channel();
     let get_main_nets = GetMainNets { command_id: request.req_id.clone(), remote_peer_id: remote_peer_id, num: 100, sender: sender };
-    node.node_request_sender.send(NodeRequest::GetMainNetsRequest(get_main_nets));
+    node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
     let nodeinfos_res = receiver.await;
     if nodeinfos_res.is_err() {
         info!("get other nets error");
@@ -310,7 +310,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     let (sender, receiver) = futures::channel::oneshot::channel();
     let pr = PublishDataRequest { data: encrypted_neg_data, sender };
     let node_request = NodeRequest::PublishData(pr);
-    node.node_request_sender.send(node_request);
+    node.node_request_sender.unbounded_send(node_request);
     let publish_res = receiver.await.unwrap();
 
     //probe

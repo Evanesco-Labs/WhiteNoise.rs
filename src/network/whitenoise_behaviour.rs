@@ -1,7 +1,9 @@
 use libp2p::{PeerId, gossipsub, identify, Swarm};
 use smallvec::SmallVec;
-use tokio::sync::{mpsc};
-use futures::{channel::oneshot};
+use futures::channel::mpsc;
+use futures::future::FutureExt;
+
+use futures::{channel::oneshot, StreamExt};
 use crate::network::protocols::proxy_protocol::{ProxyRequest, ProxyCodec, ProxyResponse};
 use crate::network::protocols::ack_protocol::{AckRequest, AckCodec, AckResponse};
 use crate::network::protocols::cmd_protocol::{CmdRequest, CmdCodec, CmdResponse};
@@ -102,7 +104,7 @@ impl NetworkBehaviourEventProcess<RelayEvent> for WhitenoiseBehaviour {
             RelayEvent::Disconnect(peer_id) => {
                 debug!("whitenoise behaviour connection disconnect for peer_id:{}", peer_id);
                 let node_proxy_request = NodeProxyRequest { remote_peer_id: peer_id, proxy_request: None, peer_operation: Some(PeerOperation::Disconnect) };
-                self.proxy_request_channel.send(node_proxy_request);
+                self.proxy_request_channel.unbounded_send(node_proxy_request);
             }
             _ => {
                 warn!("unknown relay event poll");
@@ -130,7 +132,7 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<ProxyRequest, ProxyRespon
                             proxy_request: Some(request),
                             peer_operation: None,
                         };
-                        self.proxy_request_channel.send(node_proxy_request);
+                        self.proxy_request_channel.unbounded_send(node_proxy_request);
                     }
                     _ => {}
                 }
@@ -159,7 +161,7 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<CmdRequest, CmdResponse>>
                             remote_peer_id: peer,
                             cmd_request: Some(request),
                         };
-                        self.cmd_request_channel.send(node_proxy_request);
+                        self.cmd_request_channel.unbounded_send(node_proxy_request);
                     }
                     _ => {}
                 }
@@ -229,7 +231,7 @@ impl NetworkBehaviourEventProcess<GossipsubEvent> for WhitenoiseServerBehaviour 
     fn inject_event(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message { propagation_source, message_id, message } => {
-                self.publish_channel.send(message);
+                self.publish_channel.unbounded_send(message);
             }
             GossipsubEvent::Subscribed { peer_id, .. } => {}
             _ => {}
@@ -312,13 +314,17 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseClientB
 }
 
 
-pub async fn whitenoise_client_event_loop(mut swarm1: Swarm<WhitenoiseClientBehaviour>, mut node_request_receiver: tokio::sync::mpsc::UnboundedReceiver<NodeRequest>) {
+pub async fn whitenoise_client_event_loop(mut swarm1: Swarm<WhitenoiseClientBehaviour>, mut node_request_receiver: futures::channel::mpsc::UnboundedReceiver<NodeRequest>) {
     loop {
-        tokio::select! {
-            event = swarm1.next() => {
+        futures::select! {
+            event = swarm1.next().fuse() => {
                 panic!("Unexpected event: {:?}", event);
             }
-            Some(node_request) = node_request_receiver.recv() =>{
+            receiver_res = node_request_receiver.next().fuse() =>{
+                if receiver_res.is_none(){
+                    break;
+                }
+                let node_request = receiver_res.unwrap();
                 debug!("receive node request for client");
                 match node_request{
                     NodeRequest::ProxyRequest(node_proxy_request)=>{
@@ -352,14 +358,18 @@ pub async fn whitenoise_client_event_loop(mut swarm1: Swarm<WhitenoiseClientBeha
     }
 }
 
-pub async fn whitenoise_server_event_loop(mut swarm1: Swarm<WhitenoiseServerBehaviour>, mut node_request_receiver: tokio::sync::mpsc::UnboundedReceiver<NodeRequest>) {
+pub async fn whitenoise_server_event_loop(mut swarm1: Swarm<WhitenoiseServerBehaviour>, mut node_request_receiver: futures::channel::mpsc::UnboundedReceiver<NodeRequest>) {
     let mut listening = false;
     loop {
-        tokio::select! {
-            event = swarm1.next() => {
+        futures::select! {
+            event = swarm1.next().fuse() => {
                 panic!("Unexpected event: {:?}", event);
             }
-            Some(node_request) = node_request_receiver.recv() =>{
+            receiver_res = node_request_receiver.next().fuse() =>{
+                if receiver_res.is_none(){
+                    break;
+                }
+                let node_request = receiver_res.unwrap();
                 debug!("receive node request");
                 match node_request{
                     NodeRequest::ProxyRequest(node_proxy_request)=>{

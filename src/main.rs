@@ -5,6 +5,7 @@ use libp2p::{
     noise,
 };
 use prost::Message;
+use futures::{future::FutureExt, channel::mpsc};
 
 pub mod request_proto {
     include!(concat!(env!("OUT_DIR"), "/request_proto.rs"));
@@ -39,9 +40,7 @@ use rand::{self};
 use crate::network::connection::CircuitConn;
 
 use std::error::Error;
-use tokio::io::{self, AsyncBufReadExt};
 use multihash::{Code, MultihashDigest};
-use tokio::sync::mpsc;
 use log::{info, debug};
 use network::{node};
 use sdk::chat_message::ChatMessage;
@@ -53,7 +52,7 @@ use env_logger::{Builder, Env};
 use crate::network::const_vb::BUF_LEN;
 use crate::sdk::client::{WhiteNoiseClient, Client};
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let env = env_logger::Env::new().filter_or("MY_LOG", "info");
     let mut builder = Builder::new();
@@ -177,7 +176,7 @@ pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Op
     loop {
         let wraped_stream = node.wait_for_relay_stream().await;
         debug!("{} have connected", wraped_stream.remote_peer_id.to_base58());
-        tokio::spawn(crate::network::relay_event_handler::relay_event_handler(wraped_stream.clone(), node.clone(), None));
+        async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(wraped_stream.clone(), node.clone(), None));
     }
 }
 
@@ -208,11 +207,13 @@ pub async fn answer(mut client: WhiteNoiseClient, nick_name: String) {
     let session_id = client.notify_next_session().await.unwrap();
     let mut circuit_conn = client.get_circuit(session_id.as_str()).unwrap();
 
-    let mut stdin = io::BufReader::new(io::stdin()).lines();
+    // let mut stdin = io::BufReader::new(io::stdin()).lines();
+    let mut line = String::new();
+    let mut stdin = async_std::io::stdin();
     let mut buf = [0u8; BUF_LEN];
     loop {
-        tokio::select! {
-            Ok(Some(line)) = stdin.next_line() =>{
+        futures::select! {
+             read_res = stdin.read_line(&mut line).fuse() =>{
                 let chat_message = chat_proto::ChatMessage{peer_id: nick_name.clone(),data: line.as_bytes().to_vec()};
                 let mut chat_message_encode = Vec::new();
                 chat_message.encode(&mut chat_message_encode).unwrap();
@@ -224,7 +225,7 @@ pub async fn answer(mut client: WhiteNoiseClient, nick_name: String) {
                 }
                 client.send_message(session_id.as_str(), &payload).await;
             }
-            data = circuit_conn.read(&mut buf) =>{
+            data = circuit_conn.read(&mut buf).fuse() =>{
             let chat_message = chat_proto::ChatMessage::decode(data.as_slice()).unwrap();
                 println!("receive {},message:{}",chat_message.peer_id,String::from_utf8_lossy(&chat_message.data));
             }
@@ -242,13 +243,14 @@ pub async fn caller(remote_whitenoise_id: String, mut client: WhiteNoiseClient, 
                 info!("shake hand finished");
                 break cc.clone();
             }
-            tokio::time::sleep(std::time::Duration::from_millis(20));
+            async_std::task::sleep(std::time::Duration::from_millis(20));
         };
-    let mut stdin = io::BufReader::new(io::stdin()).lines();
+    let mut line = String::new();
+    let mut stdin = async_std::io::stdin();
     let mut buf = [0u8; BUF_LEN];
     loop {
-        tokio::select! {
-            Ok(Some(line)) = stdin.next_line() =>{
+        futures::select! {
+            read_res = stdin.read_line(&mut line).fuse() =>{
                 let chat_message = chat_proto::ChatMessage{peer_id: nick_name.clone(),data: line.as_bytes().to_vec()};
                 let mut chat_message_encode = Vec::new();
                 chat_message.encode(&mut chat_message_encode).unwrap();
@@ -260,7 +262,7 @@ pub async fn caller(remote_whitenoise_id: String, mut client: WhiteNoiseClient, 
                 }
                 client.send_message(session_id.as_str(), &payload).await;
             }
-            data = circuit_conn.read(&mut buf) =>{
+            data = circuit_conn.read(&mut buf).fuse() =>{
             let chat_message = chat_proto::ChatMessage::decode(data.as_slice()).unwrap();
                 println!("receive {},message:{}",chat_message.peer_id,String::from_utf8_lossy(&chat_message.data));
 

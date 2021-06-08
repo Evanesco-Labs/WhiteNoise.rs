@@ -3,12 +3,12 @@ use libp2p::{Multiaddr,
              core::{upgrade::{self}},
              identify, identity, mplex, noise::{NoiseConfig, X25519Spec, Keypair},
              request_response::{ProtocolSupport, RequestResponseConfig, RequestResponse},
-             swarm::{SwarmBuilder}, tcp::TokioTcpConfig};
+             swarm::{SwarmBuilder}, tcp::TcpConfig};
 use crate::network::{protocols::cmd_protocol::{CmdCodec, CmdProtocol}, whitenoise_behaviour::{WhitenoiseServerBehaviour, WhitenoiseClientBehaviour}};
 
 use std::{iter};
 
-use tokio::sync::mpsc;
+use futures::channel::mpsc;
 use log::{info, debug, error};
 use crate::network::{whitenoise_behaviour::{WhitenoiseBehaviour}};
 use crate::network::protocols::proxy_protocol::{ProxyCodec, ProxyProtocol};
@@ -43,7 +43,7 @@ pub enum RunMode {
 }
 
 pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: std::option::Option<String>, run_mode: RunMode, key_pair: Option<libp2p::identity::Keypair>, key_type: crate::account::key_types::KeyType) -> Node {
-    let (node_request_sender, node_request_receiver) = mpsc::unbounded_channel();
+    let (node_request_sender, node_request_receiver) = mpsc::unbounded();
 
     let id_keys = match key_pair {
         None => Account::get_default_account_keypair("./db", key_type),
@@ -54,7 +54,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
     info!("local peer id: {:?}", peer_id);
 
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
-    let trans = TokioTcpConfig::new()
+    let trans = TcpConfig::new()
         .nodelay(true)
         .upgrade(upgrade::Version::V1)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
@@ -111,8 +111,8 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
         }
     }
 
-    let (proxy_request_sender, proxy_request_receiver) = mpsc::unbounded_channel();
-    let (cmd_request_sender, cmd_request_receiver) = mpsc::unbounded_channel();
+    let (proxy_request_sender, proxy_request_receiver) = mpsc::unbounded();
+    let (cmd_request_sender, cmd_request_receiver) = mpsc::unbounded();
     let node = Node {
         node_request_sender: node_request_sender.clone(),
         event_bus: event_bus.clone(),
@@ -147,7 +147,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
             };
             let mut swarm1 = SwarmBuilder::new(trans, whitenoise_client_behaviour, peer_id)
                 .executor(Box::new(|fut| {
-                    tokio::spawn(fut);
+                    async_std::task::spawn(fut);
                 }))
                 .build();
             match port_option {
@@ -158,7 +158,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                     Swarm::listen_on(&mut swarm1, addr.parse().unwrap()).unwrap();
                 }
             }
-            tokio::spawn(whitenoise_behaviour::whitenoise_client_event_loop(swarm1, node_request_receiver));
+            async_std::task::spawn(whitenoise_behaviour::whitenoise_client_event_loop(swarm1, node_request_receiver));
         }
         RunMode::Server => {
             let message_id_fn = |message: &GossipsubMessage| {
@@ -194,7 +194,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                 proxy_request_channel: proxy_request_sender,
                 cmd_request_channel: cmd_request_sender,
             };
-            let (publish_request_sender, publish_request_receiver) = mpsc::unbounded_channel();
+            let (publish_request_sender, publish_request_receiver) = mpsc::unbounded();
             let whitenoise_server_behaviour = WhitenoiseServerBehaviour {
                 whitenoise_behaviour: whitenoise_behaviour,
                 identify_behaviour: identify_behaviour,
@@ -202,10 +202,10 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                 publish_channel: publish_request_sender,
                 kad_dht: kad_behaviour,
             };
-            tokio::spawn(crate::network::publish_event_handler::process_publish_request(publish_request_receiver, node.clone()));
+            async_std::task::spawn(crate::network::publish_event_handler::process_publish_request(publish_request_receiver, node.clone()));
             let mut swarm1 = SwarmBuilder::new(trans, whitenoise_server_behaviour, peer_id)
                 .executor(Box::new(|fut| {
-                    tokio::spawn(fut);
+                    async_std::task::spawn(fut);
                 }))
                 .build();
             let to_search: PeerId = identity::Keypair::generate_secp256k1().public().into();
@@ -223,11 +223,11 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                     info!("local Multiaddress: {}", local_multi_addr);
                 }
             }
-            tokio::spawn(whitenoise_behaviour::whitenoise_server_event_loop(swarm1, node_request_receiver));
+            async_std::task::spawn(whitenoise_behaviour::whitenoise_server_event_loop(swarm1, node_request_receiver));
         }
     }
 
-    tokio::spawn(process_proxy_request(proxy_request_receiver, node.clone()));
-    tokio::spawn(process_cmd_request(cmd_request_receiver, node.clone()));
+    async_std::task::spawn(process_proxy_request(proxy_request_receiver, node.clone()));
+    async_std::task::spawn(process_cmd_request(cmd_request_receiver, node.clone()));
     return node;
 }

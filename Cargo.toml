@@ -5,8 +5,8 @@ authors = ["Evanesco-Labs"]
 edition = "2018"
 
 [dependencies]
-libp2p = {version = "0.37.1",features = ["tcp-tokio"]}
-tokio = { version = "1.4", features = ["fs", "sync", "time","macros","rt-multi-thread","process","net","io-util","io-std"] }
+libp2p = {version = "0.37.1"}
+async-std = { version = "1.6.5",features = ["attributes"]}
 prost = "0.7"
 log = "0.4"
 futures = "0.3.1"
@@ -17,7 +17,6 @@ smallvec = "1.6"
 rusty-leveldb = "0.3.5"
 bs58 = "0.4.0"
 multihash = { version = "0.13", default-features = false, features = ["arb"] }
-tokio-util = {version = "0.6",features = ["full"]}
 env_logger = "0.8.1"
 futures-timer = "3"
 snow = "0.7.2"

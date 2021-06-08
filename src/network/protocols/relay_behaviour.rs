@@ -18,18 +18,21 @@ use super::relay_protocol::{RelayHandler, RelayHandlerInEvent, RelayHandlerOutEv
 use smallvec::SmallVec;
 use uuid::Uuid;
 
-use futures::AsyncWriteExt;
+// use futures::AsyncWriteExt;
+use futures::{AsyncWriteExt, AsyncReadExt, StreamExt};
+use futures::future::FutureExt;
 
 
 #[derive(Clone)]
 pub struct WrappedStream {
-    pub stream: std::sync::Arc<tokio::sync::Mutex<NegotiatedSubstream>>,
+    pub stream: std::sync::Arc<futures::lock::Mutex<NegotiatedSubstream>>,
     pub remote_peer_id: PeerId,
     pub stream_id: String,
-    pub out_receiver: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<WrapedData>>>,
-    pub out_sender: tokio::sync::mpsc::UnboundedSender<WrapedData>,
-    pub in_receiver: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Result<Vec<u8>, ReadOneError>>>>,
-    pub in_sender: tokio::sync::mpsc::UnboundedSender<Result<Vec<u8>, ReadOneError>>,
+    pub out_receiver: std::sync::Arc<futures::lock::Mutex<futures::channel::mpsc::UnboundedReceiver<WrapedData>>>,
+    pub out_sender: futures::channel::mpsc::UnboundedSender<WrapedData>,
+    pub in_receiver: std::sync::Arc<futures::lock::Mutex<futures::channel::mpsc::UnboundedReceiver<Result<Vec<u8>, ReadOneError>>>>,
+    pub in_sender: futures::channel::mpsc::UnboundedSender<Result<Vec<u8>, ReadOneError>>,
+
 }
 
 pub enum WrapedData {
@@ -39,17 +42,17 @@ pub enum WrapedData {
 
 impl WrappedStream {
     pub async fn write(&mut self, data: Vec<u8>) {
-        self.out_sender.send(WrapedData::Data(data));
+        self.out_sender.unbounded_send(WrapedData::Data(data));
     }
     pub async fn read(&mut self) -> Result<Vec<u8>, ReadOneError> {
-        let read_res = self.in_receiver.lock().await.recv().await;
+        let read_res = self.in_receiver.lock().await.next().await;
         if read_res.is_none() {
             return Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream reader sender all destroyed")));
         }
         return read_res.unwrap();
     }
     pub async fn close(&mut self) {
-        self.out_sender.send(WrapedData::Close);
+        self.out_sender.unbounded_send(WrapedData::Close);
     }
 }
 
@@ -57,11 +60,11 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
     let mut stream = wraped_stream.stream.lock().await;
     let mut receiver = wraped_stream.out_receiver.lock().await;
     loop {
-        tokio::select! {
-            data = (*receiver).recv() =>{
+        futures::select! {
+            data = (*receiver).next().fuse() =>{
                 if data.is_none(){
                     info!("stream out sender is null,close");
-                    wraped_stream.in_sender.send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream out sender is null,close"))));
+                    wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream out sender is null,close"))));
                     (*stream).close().await;
                     break;
                 }
@@ -70,7 +73,7 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
                     WrapedData::Close =>{
                         info!("prepare to close stream for active close");
                         (*stream).close().await;
-                        wraped_stream.in_sender.send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "active close stream"))));
+                        wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "active close stream"))));
                         break;
                     }
                     WrapedData::Data(x) =>{
@@ -79,20 +82,20 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
                 }
             }
 
-            read_res = upgrade::read_one(&mut *stream, 4096) =>{
+            read_res = upgrade::read_one(&mut *stream, 4096).fuse() =>{
                 if read_res.is_err(){
                     info!("stream read error,so we close,{:?}",read_res.as_ref().err());
-                    wraped_stream.in_sender.send(read_res);
+                    wraped_stream.in_sender.unbounded_send(read_res);
                     break;
                 }
                 if read_res.is_ok() && read_res.as_ref().unwrap().clone().len()<=0{
                     info!("stream read len is zero");
-                    wraped_stream.in_sender.send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream read len zero"))));
+                    wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream read len zero"))));
                     break;
                 }
                 let in_sender_cp = wraped_stream.in_sender.clone();
-                tokio::task::spawn(async move{
-                    in_sender_cp.send(read_res);
+                async_std::task::spawn(async move{
+                    in_sender_cp.unbounded_send(read_res);
                 });
             }
         }
@@ -119,19 +122,19 @@ impl Relay {
 
 pub fn from_neg_to_wraped(stream: NegotiatedSubstream, peer: PeerId) -> WrappedStream {
     let stream_id = Uuid::new_v4().to_string();
-    let (out_bound_sender, out_bound_receiver) = tokio::sync::mpsc::unbounded_channel();
-    let (in_bound_sender, in_bound_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let (out_bound_sender, out_bound_receiver) = futures::channel::mpsc::unbounded();
+    let (in_bound_sender, in_bound_receiver) = futures::channel::mpsc::unbounded();
     let wraped_stream = WrappedStream {
         remote_peer_id: peer,
-        stream: std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
+        stream: std::sync::Arc::new(futures::lock::Mutex::new(stream)),
         stream_id: stream_id,
-        in_receiver: std::sync::Arc::new(tokio::sync::Mutex::new(in_bound_receiver)),
+        in_receiver: std::sync::Arc::new(futures::lock::Mutex::new(in_bound_receiver)),
         in_sender: in_bound_sender,
-        out_receiver: std::sync::Arc::new(tokio::sync::Mutex::new(out_bound_receiver)),
+        out_receiver: std::sync::Arc::new(futures::lock::Mutex::new(out_bound_receiver)),
         out_sender: out_bound_sender,
     };
     let wraped_stream_cp = wraped_stream.clone();
-    tokio::spawn(start_poll(wraped_stream_cp));
+    async_std::task::spawn(start_poll(wraped_stream_cp));
     return wraped_stream;
 }
 

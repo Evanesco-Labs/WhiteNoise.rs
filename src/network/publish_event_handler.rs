@@ -9,7 +9,7 @@ use super::{whitenoise_behaviour::{GetMainNets}};
 use super::protocols::proxy_protocol::{ProxyRequest};
 use super::protocols::ack_protocol::{AckRequest};
 use super::whitenoise_behaviour::{NodeRequest, NodeProxyRequest};
-use tokio::sync::mpsc::{UnboundedReceiver};
+use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use super::utils::{from_whitenoise_to_hash};
 use super::node::{Node};
 use super::session::SessionRole;
@@ -22,7 +22,7 @@ use libp2p::gossipsub::{
 
 pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<GossipsubMessage>, mut node: Node) {
     loop {
-        let gossipsub_message_opt = publish_receiver.recv().await;
+        let gossipsub_message_opt = publish_receiver.next().await;
         if gossipsub_message_opt.is_none() {
             break;
         }
@@ -85,7 +85,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
 
             let (sender, receiver) = futures::channel::oneshot::channel();
             let get_main_nets = GetMainNets { command_id: String::from("123"), remote_peer_id: PeerId::random(), num: 100, sender: sender };
-            node.node_request_sender.send(NodeRequest::GetMainNetsRequest(get_main_nets));
+            node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
             let nodeinfos_res = receiver.await;
             if nodeinfos_res.is_err() {
                 info!("get other nets error");
