@@ -51,7 +51,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
     };
 
     let peer_id = id_keys.public().into_peer_id();
-    info!("local peer id: {:?}", peer_id);
+    debug!("local peer id: {:?}", peer_id);
 
     let noise_keys = Keypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
     let trans = TcpConfig::new()
