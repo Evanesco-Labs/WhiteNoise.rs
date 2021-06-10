@@ -77,25 +77,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .long("keytype")
                 .help("key type")
                 .takes_value(true)))
-        .subcommand(SubCommand::with_name("chat")
-            .arg(Arg::with_name("bootstrap")
-                .short("b")
-                .long("bootstrap")
-                .help("MultiAddress of the node to bootstrap from.")
-                .takes_value(true))
-            .arg(Arg::with_name("node")
-                .short("n")
-                .long("node")
-                .help("WhiteNoise ID of the client to connect.")
-                .takes_value(true))
-            .arg(Arg::with_name("nick")
-                .long("nick")
-                .help("Nick name for chatting.")
-                .takes_value(true))
-            .arg(Arg::with_name("ktype")
-                .long("keytype")
-                .help("key type")
-                .takes_value(true)))
         .get_matches();
 
     let log_level = args.value_of("log").unwrap_or("info");
@@ -106,21 +87,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     builder.init();
 
     #[cfg(feature = "prod")]
-    if let Some(x) = args.subcommand_matches("chat") {
-        let bootstrap_addr_str = x.value_of("bootstrap").unwrap();
-        info!("bootstrap_addr:{}", bootstrap_addr_str);
-        let nick_name = String::from(x.value_of("nick").unwrap_or("Alice"));
-        info!("nick name: {}", nick_name);
-        let remote_whitenoise_id_option = x.value_of("node");
-        let remote_whitenoise_id_str_option = match remote_whitenoise_id_option {
-            None => None,
-            Some(remote_whitenoise_id) => {
-                Some(String::from(remote_whitenoise_id))
-            }
-        };
-        let key_type = String::from(x.value_of("ktype").unwrap_or("ed25519"));
-        start_client(String::from(bootstrap_addr_str), nick_name, remote_whitenoise_id_str_option.clone(), key_type).await;
-    } else if let Some(x) = args.subcommand_matches("start") {
+    if let Some(x) = args.subcommand_matches("start") {
         let bootstrap_addr_str_option = x.value_of("bootstrap");
         info!("bootstrap_addr:{:?}", bootstrap_addr_str_option);
         let port_str_option = x.value_of("port");
