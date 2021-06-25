@@ -17,6 +17,8 @@ use super::utils::{from_whitenoise_to_hash, from_request_get_id};
 use super::connection::CircuitConn;
 use multihash::{Code, MultihashDigest};
 use crate::network::const_vb::BUF_LEN;
+use crate::network::whitenoise_behaviour::NodeCmdRequest;
+use libp2p::gossipsub::GossipsubMessage;
 
 
 #[derive(Clone)]
@@ -24,7 +26,6 @@ pub struct Probe {
     pub session_id: String,
     pub rand: Vec<u8>,
 }
-
 
 #[derive(Clone)]
 pub struct Node {
@@ -92,7 +93,7 @@ impl Node {
         };
         let AckRequest(data) = self.external_send_node_request_and_wait(key, NodeRequest::ProxyRequest(node_proxy_request_get_mainnets)).await;
 
-        info!("finished get mainnets this turn:{}", data.command_id);
+        info!("[WhiteNoise] finished get mainnets this turn:{}", data.command_id);
         let peer_list = request_proto::PeersList::decode(data.data.as_slice()).unwrap();
         let mut new_peer_list = request_proto::PeersList { peers: Vec::new() };
         for peer in peer_list.peers.clone() {
@@ -106,7 +107,7 @@ impl Node {
                 remote_peer_id: PeerId::from_bytes(bs58::decode(peer.id).into_vec().unwrap().as_slice()).unwrap(),
                 remote_addr: addr_smallvec,
             };
-            info!("mainnets address:{:?},peer_id:{:?}", add_addresses_after_getmainnets.remote_addr, add_addresses_after_getmainnets.remote_peer_id);
+            info!("[WhiteNoise] mainnets address:{:?},peer_id:{:?}", add_addresses_after_getmainnets.remote_addr, add_addresses_after_getmainnets.remote_peer_id);
             self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_addresses_after_getmainnets));
         }
         return new_peer_list;
@@ -121,7 +122,7 @@ impl Node {
             time: String::from("60m"),
             white_noise_id: Account::from_keypair_to_whitenoise_id(&self.keypair),
         };
-        info!("local whitenoise id:{}", new_proxy.white_noise_id);
+        info!("[WhiteNoise] local whitenoise id:{}", new_proxy.white_noise_id);
         let mut data_buf = Vec::new();
         new_proxy.encode(&mut data_buf);
         let local_peer_id = PeerId::from(self.keypair.public());
@@ -143,7 +144,7 @@ impl Node {
             peer_operation: None,
         };
         let AckRequest(data) = self.external_send_node_request_and_wait(key, NodeRequest::ProxyRequest(node_proxy_request)).await;
-        info!("finished register proxy this turn:{:?}", data);
+        info!("[WhiteNoise] finished register proxy this turn:{:?}", data);
         if data.result {
             self.proxy_id = Some(remote_peer_id);
             return true;
@@ -199,7 +200,7 @@ impl Node {
         async_std::task::spawn(async move {
             let node_request_send_res = node_c.node_request_sender.unbounded_send(node_request);
             if node_request_send_res.is_err() {
-                info!("send node request error");
+                info!("[WhiteNoise] send node request error");
             }
         });
         return self.wait_for_out_peer_relay_stream(peer_id).await;
@@ -250,14 +251,14 @@ impl Node {
 
         let AckRequest(data) = self.external_send_node_request_and_wait(key, NodeRequest::ProxyRequest(node_proxy_request)).await;
 
-        debug!("finished new circuit:{}", data.command_id);
+        info!("[WhiteNoise] finished new circuit:{}", data.command_id);
     }
 
     pub async fn dial(&mut self, remote_whitenoise_id: String) -> String {
         let local_whitenoise_id = crate::account::account::Account::from_keypair_to_whitenoise_id(&self.keypair);
 
         let session_id = generate_session_id(remote_whitenoise_id.clone(), local_whitenoise_id.clone());
-        info!("session_id:{}", session_id);
+        info!("[WhiteNoise] session_id:{}", session_id);
         let (index, pub_bytes) = remote_whitenoise_id.split_at(1);
         let mut composit_bytes: Vec<u8> = Vec::new();
         composit_bytes.push(index.as_bytes()[0]);
@@ -287,7 +288,7 @@ impl Node {
         });
         let mut circuit_conn = cc.unwrap();
         if circuit_conn.transport_state.is_none() {
-            info!("shake not finished");
+            info!("[WhiteNoise] shake not finished");
             return;
         }
         let mut buf = [0u8; BUF_LEN];

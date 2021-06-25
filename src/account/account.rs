@@ -38,7 +38,7 @@ impl Account {
                 keypair
             }
             Some(mut default_account_bytes) => {
-                info!("use existing keypair");
+                info!("[WhiteNoise] use existing keypair");
                 match key_type {
                     super::key_types::KeyType::ED25519 => identity::Keypair::Ed25519(identity::ed25519::Keypair::decode(&mut default_account_bytes).unwrap()),
                     super::key_types::KeyType::SECP256K1 => identity::Keypair::Secp256k1(identity::secp256k1::Keypair::from(identity::secp256k1::SecretKey::from_bytes(default_account_bytes).unwrap()))

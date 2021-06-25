@@ -223,7 +223,7 @@ pub struct WhitenoiseServerBehaviour {
 
 impl NetworkBehaviourEventProcess<()> for WhitenoiseServerBehaviour {
     fn inject_event(&mut self, message: ()) {
-        info!("receive inner behaviour message:{:?}", message);
+        info!("[WhiteNoise] receive inner behaviour message:{:?}", message);
     }
 }
 
@@ -243,19 +243,19 @@ impl NetworkBehaviourEventProcess<KademliaEvent> for WhitenoiseServerBehaviour {
     fn inject_event(&mut self, message: KademliaEvent) {
         match message {
             KademliaEvent::RoutablePeer { peer, address } => {
-                info!("routable peer,peer:{:?},addresses:{:?}", peer, address);
+                info!("[WhiteNoise] routable peer,peer:{:?},addresses:{:?}", peer, address);
             }
             KademliaEvent::RoutingUpdated { peer, addresses, old_peer } => {
-                info!("routing updated,peer:{:?},addresses:{:?}", peer, addresses);
+                info!("[WhiteNoise] routing updated,peer:{:?},addresses:{:?}", peer, addresses);
             }
             KademliaEvent::UnroutablePeer { peer } => {
-                info!("unroutable peer:{}", peer)
+                info!("[WhiteNoise] unroutable peer:{}", peer)
             }
             KademliaEvent::QueryResult { id, result, .. } => {
-                info!("query result:{:?}", result);
+                info!("[WhiteNoise] query result:{:?}", result);
             }
             KademliaEvent::PendingRoutablePeer { peer, address } => {
-                info!("pending routable peer,id:{:?},address:{}", peer, address);
+                info!("[WhiteNoise] pending routable peer,id:{:?},address:{}", peer, address);
             }
         }
     }
@@ -304,7 +304,7 @@ pub struct WhitenoiseClientBehaviour {
 
 impl NetworkBehaviourEventProcess<()> for WhitenoiseClientBehaviour {
     fn inject_event(&mut self, message: ()) {
-        info!("receive inner behaviour message:{:?}", message);
+        info!("[WhiteNoise] receive inner behaviour message:{:?}", message);
     }
 }
 

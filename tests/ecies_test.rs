@@ -2,6 +2,13 @@ use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::No
 use log::{info, debug, warn, error};
 use env_logger::Builder;
 use account::account::Account;
+use whitenoisers::sdk::host::{start_server, start_dummy};
+use whitenoisers::sdk::client::{WhiteNoiseClient, Client};
+use libp2p::PeerId;
+use whitenoisers::gossip_proto;
+use prost::Message;
+use futures::StreamExt;
+use libp2p::core::identity;
 
 
 #[test]

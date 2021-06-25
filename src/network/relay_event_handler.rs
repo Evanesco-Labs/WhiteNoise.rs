@@ -42,10 +42,10 @@ pub async fn relay_event_handler(mut stream: WrappedStream, mut node: Node, mut 
                     find_stream
                 };
                 if find_stream {
-                    info!("relay stream error and find stream in session so we close all session");
+                    info!("[WhiteNoise] relay stream error and find stream in session so we close all session");
                     node.handle_close_session(session_id.as_ref().unwrap()).await;
                 } else {
-                    info!("session'stream not include this stream,which is replaced,and relay stram read is already closed,need no more work");
+                    info!("[WhiteNoise] session'stream not include this stream,which is replaced,and relay stram read is already closed,need no more work");
                 }
             }
             break;
@@ -76,7 +76,7 @@ pub async fn relay_event_handler(mut stream: WrappedStream, mut node: Node, mut 
             }
             handle_set_session(node.clone(), relay_set_session, stream.clone(), read_relay.id).await;
         } else if read_relay.r#type == (relay_proto::Relaytype::Success as i32) {
-            info!("relay event handler receive set success");
+            info!("[WhiteNoise] relay event handler receive set success");
             handle_success(node.clone(), read_relay, stream.clone()).await;
         } else if read_relay.r#type == (relay_proto::Relaytype::Data as i32) {
             handle_relay_msg(node.clone(), read_relay, stream.clone()).await;
@@ -93,25 +93,25 @@ pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: Wrap
         return;
     }
     if session.is_some() && session.as_ref().unwrap().session_role == (SessionRole::JointRole as i32) {
-        info!("i am joint node,session id:{}", session_id);
+        info!("[WhiteNoise] i am joint node,session id:{}", session_id);
         if node.probe_map.read().unwrap().contains_key(&session_id) {
-            info!("i contains probe");
+            info!("[WhiteNoise] i contains probe");
             let exist_probe = node.probe_map.read().unwrap().get(&session_id).and_then(|x| {
                 Some(x.clone())
             });
             if exist_probe.unwrap().rand == probe.data {
-                info!("exist probe and probe equals");
+                info!("[WhiteNoise] exist probe and probe equals");
                 let circuit_success_relay = new_relay_circuit_success(&session_id);
                 if session.is_some() {
                     let new_session = session.unwrap();
                     send_relay_twoway(&new_session, circuit_success_relay).await;
                 }
             } else {
-                info!("exist probe and probe not equals");
+                info!("[WhiteNoise] exist probe and probe not equals");
                 node.handle_close_session(&session_id).await;
             }
         } else {
-            info!("i donnot contains probe");
+            info!("[WhiteNoise] i donnot contains probe");
             let session_probe = crate::network::node::Probe { session_id: session_id.clone(), rand: probe.data.clone() };
             node.probe_map.write().unwrap().insert(session_id.clone(), session_probe);
         }
@@ -126,7 +126,7 @@ pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: Wrap
 }
 
 pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
-    info!("relay event handler start handle success");
+    info!("[WhiteNoise] relay event handler start handle success");
     let relay_success_rst = relay_proto::CircuitSuccess::decode(relay.data.as_slice());
     if relay_success_rst.is_err() {
         return;
@@ -144,7 +144,7 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
         return;
     }
     if session.as_ref().unwrap().session_role == (SessionRole::CallerRole as i32) {
-        info!("handle success for caller");
+        info!("[WhiteNoise] handle success for caller");
         let circuit_conn = {
             let guard = node.circuit_map.read().unwrap();
             let cc = (*guard).get(&relay_success.session_id).unwrap();
@@ -172,16 +172,16 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
 }
 
 pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, session_id: String, node: Node) {
-    info!("start handshake");
+    info!("[WhiteNoise] start handshake");
     //caller
     if initiate {
-        info!("start handshake initiate");
+        info!("[WhiteNoise] start handshake initiate");
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
             .into_authentic(&node.keypair)
             .expect("Signing libp2p-noise static DH keypair failed.");
 
         let bb = noise_keys.public().as_ref();
-        info!("noise pub key:{}", bs58::encode(bb).into_string());
+        info!("[WhiteNoise] noise pub key:{}", bs58::encode(bb).into_string());
         let msg = ["noise-libp2p-static-key:".as_bytes(), bb].concat();
 
         let params: NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap();
@@ -194,14 +194,14 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
         //write nil
         let len = noise.write_message(&[], &mut buf).unwrap();
         write_handshake_payload_arc(circuit_conn.out_stream.clone(), &buf[..len], len, &session_id).await;
-        info!("write nil");
+        info!("[WhiteNoise] write nil");
         // <- s, se
         let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
         //     //verify 
-        info!("read identity");
+        info!("[WhiteNoise] read identity");
         let pubkey = noise.get_remote_static().unwrap();
         let verify_success = handle_remote_handshake_payload(&buf[..len], pubkey);
-        info!("verify success:{}", verify_success);
+        info!("[WhiteNoise] verify success:{}", verify_success);
         // -> e, ee, s, es
         let payload = generate_handshake_payload(noise_keys.into_identity()).await;
         let len = noise.write_message(&payload, &mut buf).unwrap();
@@ -214,19 +214,19 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
         }
-        info!("Build circuit success!");
+        info!("[WhiteNoise] Build circuit success!");
     } else {
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
             .into_authentic(&node.keypair)
             .expect("Signing libp2p-noise static DH keypair failed.");
 
         let bb = noise_keys.public().as_ref();
-        info!("noise pub key:{}", bs58::encode(bb).into_string());
+        info!("[WhiteNoise] noise pub key:{}", bs58::encode(bb).into_string());
         let msg = ["noise-libp2p-static-key:".as_bytes(), bb].concat();
         //
         let pp = noise_keys.clone().into_identity().public;
         let verify_succes = pp.verify(&msg, &noise_keys.clone().into_identity().signature.unwrap());
-        info!("self verify success:{}", verify_succes);
+        info!("[WhiteNoise] self verify success:{}", verify_succes);
         //let noise_config = noise::NoiseConfig::xx(noise_keys);
 
 
@@ -254,7 +254,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
 
         let pubkey = noise.get_remote_static().unwrap();
         let verify_success = crate::network::utils::handle_remote_handshake_payload(&buf[..len], pubkey);
-        info!("verify success:{}", verify_success);
+        info!("[WhiteNoise] verify success:{}", verify_success);
 
         let mut noise = noise.into_transport_mode().unwrap();
         circuit_conn.transport_state = Some(std::sync::Arc::new(std::sync::Mutex::new(noise)));
@@ -262,19 +262,19 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             let mut guard = node.circuit_map.write().unwrap();
             (*guard).insert(session_id.clone(), circuit_conn);
         }
-        info!("Build circuit success!");
+        info!("[WhiteNoise] Build circuit success!");
     }
 }
 
 pub fn handle_read_shake(data: Vec<u8>, noise: &mut HandshakeState, buf: &mut Vec<u8>) -> usize {
     let buf_len = data[0] as usize * 256 + data[1] as usize;
-    debug!("relay data len:{},real buf len:{}", data.len(), buf_len);
+    info!("[WhiteNoise] relay data len:{},real buf len:{}", data.len(), buf_len);
     let payload = data[2..(2 + buf_len)].to_vec();
     return noise.read_message(&payload, buf).unwrap();
 }
 
 pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
-    //info!("receive relay msg,peer_id:{:?}",stream.remote_peer_id);
+    //info!("[WhiteNoise] receive relay msg,peer_id:{:?}",stream.remote_peer_id);
     let relay_msg_rst = relay_proto::RelayMsg::decode(relay.data.as_slice());
     if relay_msg_rst.is_err() {
         return;
@@ -290,7 +290,7 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
         }
     };
     if session.is_none() {
-        info!("receive relay msg,peer_id:{:?},session is null", stream.remote_peer_id);
+        info!("[WhiteNoise] receive relay msg,peer_id:{:?},session is null", stream.remote_peer_id);
         return;
     }
     if session.as_ref().unwrap().session_role == (SessionRole::AnswerRole as i32) || session.as_ref().unwrap().session_role == (SessionRole::CallerRole as i32) {
@@ -320,14 +320,14 @@ pub async fn handle_set_session(mut node: Node, relay_set_session: relay_proto::
         }
     };
     if session.is_some() && session.as_ref().unwrap().session_role == (SessionRole::EntryRole as i32) && relay_set_session.role == (SessionRole::RelayRole as i32) {
-        info!("start to process set session id,entry and relay are the same");
+        info!("[WhiteNoise] start to process set session id,entry and relay are the same");
         if session.as_ref().unwrap().ready() {
-            info!("start to process set session id,entry and relay are the same,session is ready");
-            info!("start to process set session id,entry and relay are the same,replace later stream");
+            info!("[WhiteNoise] start to process set session id,entry and relay are the same,session is ready");
+            info!("[WhiteNoise] start to process set session id,entry and relay are the same,replace later stream");
             let mut new_session = session.clone().unwrap();
             new_session.pair_stream.later_stream = Some(stream.clone());
             node.session_map.write().unwrap().insert(relay_set_session.session_id.clone(), new_session);
-            info!("start to process set session id,entry and relay are the same,close early later stream");
+            info!("[WhiteNoise] start to process set session id,entry and relay are the same,close early later stream");
             let mut to_close_stream = session.unwrap().pair_stream.later_stream.unwrap();
             write_disconnect_arc(to_close_stream.clone(), relay_set_session.session_id.clone()).await;
             to_close_stream.close().await;

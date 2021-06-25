@@ -1,6 +1,7 @@
 use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
 use log::{info, debug, warn, error};
 use env_logger::Builder;
+use whitenoisers::sdk::host::start_server;
 
 #[async_std::test]
 async fn node_test() {
@@ -9,7 +10,7 @@ async fn node_test() {
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let key_type = String::from("ed25519");
 
-    let boot = start_server(None, port, key_type.clone(), keypair).await;
+    let boot = start_server(None, port, key_type.clone(), Some(keypair)).await;
     let boot_id = boot.get_id();
     let mut bootstrap_addr = String::from("/ip4/127.0.0.1/tcp/3331/p2p/");
     bootstrap_addr.push_str(boot_id.as_str());
@@ -21,23 +22,10 @@ async fn node_test() {
     for _i in 0..cnt {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let keypair = libp2p::identity::Keypair::generate_ed25519();
-        let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), keypair).await;
+        let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(keypair)).await;
         port_int = port_int + 1;
         node_vec.push(node);
     }
-}
-
-async fn start_server(bootstrap_addr_option: Option<String>, port_option: Option<String>, key_type: String, key_pair: libp2p::identity::Keypair) -> Node {
-    let mut node = host::start(port_option, bootstrap_addr_option, RunMode::Server, Some(key_pair), account::key_types::KeyType::from_str(key_type.as_str()));
-    let node_c = node.clone();
-    async_std::task::spawn(async move {
-        loop {
-            let wraped_stream = node.wait_for_relay_stream().await;
-            debug!("{} have connected", wraped_stream.remote_peer_id.to_base58());
-            async_std::task::spawn(network::relay_event_handler::relay_event_handler(wraped_stream.clone(), node.clone(), None));
-        }
-    });
-    node_c
 }
 
 #[test]

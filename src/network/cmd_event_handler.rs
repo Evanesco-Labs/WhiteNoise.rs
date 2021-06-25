@@ -27,7 +27,7 @@ pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<Nod
                 let session = node.session_map.read().unwrap().get(&session_expend.session_id).and_then(|x| {
                     Some(x.clone())
                 });
-                info!("prepare to process cmd request,i am relay node,session id:{}", session_expend.session_id);
+                info!("[WhiteNoise] prepare to process cmd request,i am relay node,session id:{}", session_expend.session_id);
                 if session.is_none() {
                     node.handle_close_session(&session_expend.session_id).await;
                     ack.data = "No such session".as_bytes().to_vec();
@@ -36,7 +36,7 @@ pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<Nod
                     continue;
                 }
                 if session.as_ref().unwrap().ready() {
-                    info!("session is ready,both relay and entry,session id:{}", session_expend.session_id);
+                    info!("[WhiteNoise] session is ready,both relay and entry,session id:{}", session_expend.session_id);
                     ack.result = true;
                     let ack_request = NodeRequest::AckRequest(NodeAckRequest { remote_peer_id: node_cmd_request.remote_peer_id.clone(), ack_request: Some(AckRequest(ack)) });
                     node.send_ack(ack_request).await;
@@ -62,7 +62,7 @@ pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<Nod
                 }
             }
         } else {
-            info!("cmd sender all stop");
+            info!("[WhiteNoise] cmd sender all stop");
             break;
         }
     }

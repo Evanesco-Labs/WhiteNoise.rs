@@ -63,7 +63,7 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
         futures::select! {
             data = (*receiver).next().fuse() =>{
                 if data.is_none(){
-                    info!("stream out sender is null,close");
+                    info!("[WhiteNoise] stream out sender is null,close");
                     wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream out sender is null,close"))));
                     (*stream).close().await;
                     break;
@@ -71,7 +71,7 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
                 let wraped_data: WrapedData = data.unwrap();
                 match wraped_data{
                     WrapedData::Close =>{
-                        info!("prepare to close stream for active close");
+                        info!("[WhiteNoise] prepare to close stream for active close");
                         (*stream).close().await;
                         wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "active close stream"))));
                         break;
@@ -84,12 +84,12 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
 
             read_res = upgrade::read_one(&mut *stream, 4096).fuse() =>{
                 if read_res.is_err(){
-                    info!("stream read error,so we close,{:?}",read_res.as_ref().err());
+                    info!("[WhiteNoise] stream read error,so we close,{:?}",read_res.as_ref().err());
                     wraped_stream.in_sender.unbounded_send(read_res);
                     break;
                 }
                 if read_res.is_ok() && read_res.as_ref().unwrap().clone().len()<=0{
-                    info!("stream read len is zero");
+                    info!("[WhiteNoise] stream read len is zero");
                     wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream read len zero"))));
                     break;
                 }
