@@ -80,9 +80,9 @@ pub fn handle_remote_handshake_payload(payload: &[u8], remote_static: &[u8]) -> 
 pub async fn generate_handshake_payload(identity: KeypairIdentity) -> Vec<u8> {
     let mut pb = payload_proto::NoiseHandshakePayload::default();
     pb.identity_key = identity.public.clone().into_protobuf_encoding();
-    info!("public key:{}", bs58::encode(pb.identity_key.as_slice()).into_string());
+    info!("[WhiteNoise] public key:{}", bs58::encode(pb.identity_key.as_slice()).into_string());
     pb.identity_sig = identity.signature.clone().unwrap();
-    info!("signature:{}", bs58::encode(pb.identity_sig.as_slice()).into_string());
+    info!("[WhiteNoise] signature:{}", bs58::encode(pb.identity_sig.as_slice()).into_string());
     let mut msg = Vec::with_capacity(pb.encoded_len());
     pb.encode(&mut msg).unwrap();
     return msg;
@@ -97,7 +97,7 @@ pub async fn write_relay(stream: &mut NegotiatedSubstream, mut relay: relay_prot
     relay.encode(&mut relay_data);
 
     upgrade::write_with_len_prefix(stream, &relay_data).map_err(|e| {
-        info!("write relay error:{:?}", e);
+        info!("[WhiteNoise] write relay error:{:?}", e);
         io::Error::new(io::ErrorKind::InvalidData, e)
     }).await.unwrap();
     return key;
@@ -234,9 +234,9 @@ pub async fn read_payload_arc(stream: WrappedStream) -> Vec<u8> {
     };
 
     let relay_msg = relay_proto::RelayMsg::decode(relay.data.as_slice()).unwrap();
-    debug!("read decrypt relay msg data len:{}", relay_msg.data.len());
+    debug!("[WhiteNoise] read decrypt relay msg data len:{}", relay_msg.data.len());
     let buf_len = relay_msg.data[0] as usize * 256 + relay_msg.data[1] as usize;
-    debug!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
+    info!("[WhiteNoise] relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
     relay_msg.data[2..(2 + buf_len)].to_vec()
 }
 
@@ -252,7 +252,7 @@ pub async fn read_payload(stream: &mut NegotiatedSubstream) -> Vec<u8> {
     let relay_msg = relay_proto::RelayMsg::decode(relay.data.as_slice()).unwrap();
     debug!("read decrypt relay msg data len:{}", relay_msg.data.len());
     let buf_len = relay_msg.data[0] as usize * 256 + relay_msg.data[1] as usize;
-    debug!("relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
+    info!("[WhiteNoise] relay data len:{},real buf len:{}", relay_msg.data.len(), buf_len);
     relay_msg.data[2..(2 + buf_len)].to_vec()
 }
 
@@ -291,7 +291,7 @@ pub async fn read_from_negotiated_arc(mut stream: WrappedStream) -> Result<relay
 pub async fn read_from_negotiated(stream: &mut NegotiatedSubstream) -> Result<relay_proto::Relay, io::Error> {
     let msg = upgrade::read_one(stream, 4096)
         .map_err(|e| {
-            info!("receive relay error:{:?}", e);
+            info!("[WhiteNoise] receive relay error:{:?}", e);
             io::Error::new(io::ErrorKind::InvalidData, e)
         }).await?;
     let relay = relay_proto::Relay::decode(msg.as_slice()).unwrap();

@@ -33,9 +33,10 @@ use libp2p::{gossipsub};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::network::node::Node;
+use crate::network::node::{Node, TestNode};
 use crate::network::proxy_event_handler::process_proxy_request;
 use crate::network::cmd_event_handler::process_cmd_request;
+use crate::{account, network};
 
 pub enum RunMode {
     Client,
@@ -220,7 +221,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                     local_multi_addr.push_str(port.as_str());
                     local_multi_addr.push_str("/p2p/");
                     local_multi_addr.push_str(peer_id.to_string().as_str());
-                    info!("local Multiaddress: {}", local_multi_addr);
+                    info!("[WhiteNoise] local Multiaddress: {}", local_multi_addr);
                 }
             }
             async_std::task::spawn(whitenoise_behaviour::whitenoise_server_event_loop(swarm1, node_request_receiver));
@@ -230,4 +231,17 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
     async_std::task::spawn(process_proxy_request(proxy_request_receiver, node.clone()));
     async_std::task::spawn(process_cmd_request(cmd_request_receiver, node.clone()));
     return node;
+}
+
+pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Option<String>, key_type: String, key_pair: Option<libp2p::identity::Keypair>) -> Node {
+    let mut node = start(port_option, bootstrap_addr_option, RunMode::Server, key_pair, account::key_types::KeyType::from_str(key_type.as_str()));
+    let node_c = node.clone();
+    async_std::task::spawn(async move {
+        loop {
+            let wraped_stream = node.wait_for_relay_stream().await;
+            debug!("{} have connected", wraped_stream.remote_peer_id.to_base58());
+            async_std::task::spawn(network::relay_event_handler::relay_event_handler(wraped_stream.clone(), node.clone(), None));
+        }
+    });
+    node_c
 }

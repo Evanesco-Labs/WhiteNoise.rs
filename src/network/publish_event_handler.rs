@@ -49,19 +49,19 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             let ack_response = node.external_send_node_request_and_wait(key, node_request).await;
             let AckRequest(ack) = ack_response;
             if !ack.result {
-                info!("client decrypt error");
+                info!("[WhiteNoise] client decrypt error");
                 continue;
             }
             let negotiate = gossip_proto::Negotiate::decode(ack.data.as_slice()).unwrap();
-            info!("i have the answer client,i am exit node,session id:{}", negotiate.session_id);
+            info!("[WhiteNoise] i have the answer client,i am exit node,session id:{}", negotiate.session_id);
             let wraped_stream_opt = node.new_session_to_peer(&client_info.peer_id, negotiate.session_id.clone(), SessionRole::ExitRole as i32, SessionRole::AnswerRole as i32).await;
             if wraped_stream_opt.is_none() {
-                info!("new session to answer client error");
+                info!("[WhiteNoise] new session to answer client error");
                 node.handle_close_session(&negotiate.session_id).await;
                 continue;
             }
             if negotiate.join == node.get_id() {
-                info!("act both joint and exit,session id:{}", negotiate.session_id);
+                info!("[WhiteNoise] act both joint and exit,session id:{}", negotiate.session_id);
 
                 let circuit_success_relay = new_relay_circuit_success(&negotiate.session_id);
                 let new_session_opt = {
@@ -73,7 +73,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                     }
                 };
                 if new_session_opt.is_none() {
-                    info!("joint and exit node have no session");
+                    info!("[WhiteNoise] joint and exit node have no session");
                     continue;
                 }
                 if new_session_opt.is_some() {
@@ -88,7 +88,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
             let nodeinfos_res = receiver.await;
             if nodeinfos_res.is_err() {
-                info!("get other nets error");
+                info!("[WhiteNoise] get other nets error");
                 continue;
             }
             let nodeinfos = nodeinfos_res.unwrap();
@@ -97,7 +97,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             let mut relay = PeerId::random();
 
             for i in 0..3 {
-                info!("try {} for connecto to other peer for relay role", i);
+                info!("[WhiteNoise] try {} for connecto to other peer for relay role", i);
                 let mut index = rand::random::<usize>();
 
                 for j in 0..(nodeinfos.len()) {
@@ -122,7 +122,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             }
 
             if !try_join {
-                info!("try three times find relay but failed");
+                info!("[WhiteNoise] try three times find relay but failed");
                 node.handle_close_session(&negotiate.session_id).await;
                 continue;
             }
@@ -148,12 +148,12 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             let ack_response = node.external_send_node_request_and_wait(key, NodeRequest::CmdRequest(node_cmd_request)).await;
             let AckRequest(ack) = ack_response;
             if !ack.result {
-                info!("session expand failed");
+                info!("[WhiteNoise] session expand failed");
                 node.handle_close_session(&negotiate.session_id).await;
                 continue;
             }
             //probe
-            info!("prepare to send probe");
+            info!("[WhiteNoise] prepare to send probe");
 
             let probe_relay = new_relay_probe(negotiate.session_id.as_str());
 
@@ -161,7 +161,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                 return Some(session.clone());
             });
             if session_opt.is_none() {
-                info!("publish want to send probe,but session is null");
+                info!("[WhiteNoise] publish want to send probe,but session is null");
                 continue;
             }
             let session = session_opt.unwrap();

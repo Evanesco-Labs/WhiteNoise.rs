@@ -37,31 +37,64 @@ Once the project has been built, the following command can be used to explore al
 ## Run
 
 ### Start Local WhiteNoise Network
+At first, we suggest user build 5 directories at least, contains boot and node1/2/3/4
+```shell
+mkdir boot node1 node2 node3 node4    
+```
+
+By then, we can build soft link from whitenoisers binary to above directories:
+```shell
+cd directory/of/boot
+ln -s binary/path/of/whitenoisers directory/of/boot/whitenoisers
+
+cd directory/of/node1
+ln -s binary/path/of/whitenoisers directory/of/node1/whitenoisers
+
+cd directory/of/node2
+ln -s binary/path/of/whitenoisers directory/of/node2/whitenoisers
+
+cd directory/of/node3
+ln -s binary/path/of/whitenoisers directory/of/node3/whitenoisers
+
+cd directory/of/node4
+ln -s binary/path/of/whitenoisers directory/of/node4/whitenoisers
+```
 
 #### 1. Start Bootstrap Node
 
 This command will start a WhiteNoise node as a Bootstrap, listening to port "3331":
 
 ```shell
-./whitenoisers start --port 3331
+cd boot
+ ./whitenoisers start --port 3331
 ```
 
 After running this command, the local **MultiAddress** of Bootstrap is shown in log like the following:
+![img.png](docs/pics/img0.png)
+Notice: Please remember the value of Multiaddress(*/ip4/127.0.0.1/tcp/3331/p2p/12D3KooWL4obTZmoVKWxxxSymX6P7iJHu5HuDqL5c3sNAqBP2NwE*), we will use it for bootstraping node1/node2/node3/node4 in future.
 
-```verilog
-[2021-06-07T08:42:53.183Z INFO  whitenoisers::sdk::host] local Multiaddress: /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWMNFaCGrnfMomi4TTMvQsKMGVwoxQzHo6P49ue6Fwq6zU
-```
-
-#### 2. Start WhiteNoise Nodes
+#### 2. Start WhiteNoise Node1
 
 This command will start a WhiteNoise node as normal relay node, listening to port "3332". Make sure the port is
 available and fill in the Bootstrap **MultiAddress** in the `--bootstrap` flag:
 
 ```shell
-./whitenoisers start --port 3332 --bootstrap /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWMNFaCGrnfMomi4TTMvQsKMGVwoxQzHo6P49ue6Fwq6zU
+cd node1
+./whitenoisers start --port 3332 --bootstrap /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWL4obTZmoVKWxxxSymX6P7iJHu5HuDqL5c3sNAqBP2NwE
 ```
+At the same time, we will see some **JOINING** logs printed in boot node as following:
+![img.png](./docs/pics/img1.png)
 
-Change the port and start more nodes.
+#### 3. Start WhiteNoise Node2
+We will do as step 2 to start node2 use the same MultiAddress value and use another --port value 3333:
+```shell
+cd node2
+./whitenoisers start --port 3333 --bootstrap /ip4/127.0.0.1/tcp/3331/p2p/12D3KooWL4obTZmoVKWxxxSymX6P7iJHu5HuDqL5c3sNAqBP2NwE
+```
+Of course, we will see some **JOINING** logs about node2 printed in boot node as following:
+![img.png](docs/pics/img2.png)
+
+Change the port and start node3 and node4, finally we will build a network with four relay nodes and one bootstrap node.
 
 ### Join WhiteNoise Network
 

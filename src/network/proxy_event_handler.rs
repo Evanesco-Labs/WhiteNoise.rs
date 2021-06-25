@@ -96,7 +96,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                 node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 debug!("send encrypt neg");
             } else if request.reqtype == (request_proto::Reqtype::MainNetPeers as i32) {
-                //info!("receive get main_net_peers");
+                //info!("[WhiteNoise] receive get main_net_peers");
                 let get_mainnets_request = request_proto::MainNetPeers::decode(request.data.as_slice()).unwrap();
                 let (sender, receiver) = futures::channel::oneshot::channel();
                 let get_main_nets = GetMainNets { command_id: request.req_id.clone(), remote_peer_id: node_proxy_request.remote_peer_id.clone(), num: get_mainnets_request.max, sender: sender };
@@ -120,7 +120,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                     (*guard).get(&hash).is_some()
                 };
                 if true == find {
-                    //info!("prepare to  register proxy information in map:{},and wn map exists",node_proxy_request.remote_peer_id.to_base58());
+                    //info!("[WhiteNoise] prepare to  register proxy information in map:{},and wn map exists",node_proxy_request.remote_peer_id.to_base58());
                     let data = "Proxy already".as_bytes().to_vec();
                     let mut ack_response = command_proto::Ack { command_id: request.req_id, result: false, data: data };
                     let ack_request = AckRequest(ack_response);
@@ -131,14 +131,14 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                     node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 } else {
                     {
-                        //info!("prepare to  register proxy information in map:{}",node_proxy_request.remote_peer_id.to_base58());
+                        //info!("[WhiteNoise] prepare to  register proxy information in map:{}",node_proxy_request.remote_peer_id.to_base58());
                         let mut guard = node.client_peer_map.write().unwrap();
                         (*guard).insert(node_proxy_request.remote_peer_id.to_base58(), hash.clone());
                     }
                     {
                         let client_info = ClientInfo { whitenoise_id: new_proxy.white_noise_id, peer_id: node_proxy_request.remote_peer_id, state: 1, time: std::time::Duration::from_secs(3600) };
                         let mut guard = node.client_wn_map.write().unwrap();
-                        //info!("prepare to  register proxy information in wn map:{}",hash);
+                        //info!("[WhiteNoise] prepare to  register proxy information in wn map:{}",hash);
                         (*guard).insert(hash, client_info);
                     }
                     let mut ack_response = command_proto::Ack { command_id: request.req_id, result: true, data: Vec::new() };
@@ -150,7 +150,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                     node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
                 }
             } else if request.reqtype == (request_proto::Reqtype::UnRegisterType as i32) {
-                info!("receive unregister and going to remove register proxy information in map");
+                info!("[WhiteNoise] receive unregister and going to remove register proxy information in map");
                 let hash_option = {
                     let mut guard = node.client_peer_map.write().unwrap();
                     (*guard).remove(&node_proxy_request.remote_peer_id.to_base58())
@@ -171,7 +171,7 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
                 node.node_request_sender.unbounded_send(NodeRequest::AckRequest(node_ack_request));
             }
         } else {
-            info!("proxy sender all stop");
+            info!("[WhiteNoise] proxy sender all stop");
             break;
         }
     }
@@ -180,17 +180,17 @@ pub async fn process_proxy_request(mut proxy_request_receiver: UnboundedReceiver
 pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request, remote_peer_id: PeerId) -> bool {
     let new_circuit_rst = request_proto::NewCircuit::decode(request.data.as_slice());
     if new_circuit_rst.is_err() {
-        info!("parse new circuit error");
+        info!("[WhiteNoise] parse new circuit error");
         return false;
     }
     let new_circuit = new_circuit_rst.unwrap();
     if node.client_wn_map.read().unwrap().get(&new_circuit.from).is_none() {
-        info!("have no client for from:{}", new_circuit.from);
+        info!("[WhiteNoise] have no client for from:{}", new_circuit.from);
         return false;
     }
     let empty_or_full_check = node.session_map.read().unwrap().get(&new_circuit.session_id).and_then(|session| {
         if session.pair_stream.early_stream.is_some() && session.pair_stream.later_stream.is_some() {
-            info!("session is full for :{}", new_circuit.session_id);
+            info!("[WhiteNoise] session is full for :{}", new_circuit.session_id);
             return Some(false);
         } else {
             return Some(true);
@@ -208,12 +208,12 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
         }
     };
     if to_client_info_opt.is_some() {
-        info!("entry node is also exit node,session id:{}", new_circuit.session_id);
+        info!("[WhiteNoise] entry node is also exit node,session id:{}", new_circuit.session_id);
         let to_client_info = to_client_info_opt.unwrap();
 
         let wraped_stream_opt = node.new_session_to_peer(&to_client_info.peer_id, new_circuit.session_id.clone(), SessionRole::ExitRole as i32, SessionRole::AnswerRole as i32).await;
         if wraped_stream_opt.is_none() {
-            info!("same entry and exit,new session to peer failed");
+            info!("[WhiteNoise] same entry and exit,new session to peer failed");
             return false;
         }
         let wraped_stream = wraped_stream_opt.unwrap();
@@ -233,14 +233,14 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
         }
         return true;
     }
-    info!("i am entry node,session id:{}", new_circuit.session_id);
+    info!("[WhiteNoise] i am entry node,session id:{}", new_circuit.session_id);
 
     let (sender, receiver) = futures::channel::oneshot::channel();
     let get_main_nets = GetMainNets { command_id: request.req_id.clone(), remote_peer_id: remote_peer_id, num: 100, sender: sender };
     node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
     let nodeinfos_res = receiver.await;
     if nodeinfos_res.is_err() {
-        info!("get other nets error");
+        info!("[WhiteNoise] get other nets error");
         return false;
     }
     let nodeinfos = nodeinfos_res.unwrap();
@@ -249,7 +249,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     let mut join = PeerId::random();
 
     for i in 0..3 {
-        info!("try {} for connecto to other peer for joint role", i);
+        info!("[WhiteNoise] try {} for connecto to other peer for joint role", i);
         let mut index = rand::random::<usize>();
 
         for j in 0..(nodeinfos.len()) {
@@ -274,12 +274,12 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     }
 
     if !try_join {
-        info!("try three times to find joint but failed");
+        info!("[WhiteNoise] try three times to find joint but failed");
         node.handle_close_session(&new_circuit.session_id).await;
         return false;
     }
 
-    info!("prepare to send neg infomation");
+    info!("[WhiteNoise] prepare to send neg infomation");
     let neg = gossip_proto::Negotiate { join: join.to_base58(), session_id: new_circuit.session_id.clone(), destination: new_circuit.to.clone(), sig: Vec::new() };
     let mut neg_data = Vec::new();
     neg.encode(&mut neg_data).unwrap();
@@ -299,11 +299,11 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     neg_request.req_id = key.clone();
     let node_request = NodeRequest::ProxyRequest(NodeProxyRequest { remote_peer_id: remote_peer_id, proxy_request: Some(ProxyRequest(neg_request)), peer_operation: None });
     let ack_request = node.external_send_node_request_and_wait(key, node_request).await;
-    info!("receive neg information");
+    info!("[WhiteNoise] receive neg information");
     let AckRequest(ack) = ack_request;
     let neg_cypher = ack.data;
     //publish
-    info!("prepare to publish");
+    info!("[WhiteNoise] prepare to publish");
     let encrypted_neg = gossip_proto::EncryptedNeg { des: new_circuit.to, cypher: neg_cypher };
     let mut encrypted_neg_data = Vec::new();
     encrypted_neg.encode(&mut encrypted_neg_data).unwrap();
@@ -314,7 +314,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     let publish_res = receiver.await.unwrap();
 
     //probe
-    info!("prepare to send probe");
+    info!("[WhiteNoise] prepare to send probe");
     let probe_relay = new_relay_probe(new_circuit.session_id.as_str());
 
     let session_opt = node.session_map.read().unwrap().get(&new_circuit.session_id).and_then(|session| {
