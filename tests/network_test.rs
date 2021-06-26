@@ -103,6 +103,13 @@ async fn register_test() {
 
 #[async_std::test]
 async fn circuit_connection_test() {
+    //log
+    let env = env_logger::Env::new().filter_or("MY_LOG", "info");
+    let mut builder = Builder::new();
+    builder.parse_env(env);
+    builder.format_timestamp_millis();
+    builder.init();
+
     //start boot strap
     let port = Some(String::from("3351"));
     let keypair = libp2p::identity::Keypair::generate_ed25519();
@@ -113,10 +120,18 @@ async fn circuit_connection_test() {
     let mut bootstrap_addr = String::from("/ip4/127.0.0.1/tcp/3351/p2p/");
     bootstrap_addr.push_str(boot_id.as_str());
 
-    //start nodes
-    let mut port_int = 6681;
-    let keypair = libp2p::identity::Keypair::generate_ed25519();
-    let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(keypair)).await;
+    // //start nodes
+    let cnt = 4;
+    let mut node_vec = Vec::new();
+    let mut port_int = 6661;
+    for _i in 0..cnt {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let keypair = libp2p::identity::Keypair::generate_ed25519();
+        info!("peerid {}: {}", _i, keypair.public().into_peer_id().to_base58());
+        let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(keypair)).await;
+        port_int = port_int + 1;
+        node_vec.push(node.clone());
+    }
 
     //waiting for update peerlist
     std::thread::sleep(std::time::Duration::from_secs(1));
@@ -125,7 +140,7 @@ async fn circuit_connection_test() {
     let answer_keypair = libp2p::identity::Keypair::generate_ed25519();
     let mut answer = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(answer_keypair));
     let mut peers_caller = answer.get_main_net_peers(10).await;
-    assert_eq!(peers_caller.len(), 1 as usize);
+    assert_eq!(peers_caller.len(), cnt as usize);
 
     let answer_proxy_id = peers_caller.get(0).unwrap().clone();
 
@@ -137,17 +152,19 @@ async fn circuit_connection_test() {
     let caller_keypair = libp2p::identity::Keypair::generate_ed25519();
     let mut caller = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(caller_keypair));
     let mut peers_answer = caller.get_main_net_peers(10).await;
-    assert_eq!(peers_answer.len(), 1 as usize);
+    assert_eq!(peers_answer.len(), cnt as usize);
 
-    let caller_proxy_id = peers_answer.get(0).unwrap().clone();
+    let caller_proxy_id = peers_answer.get(1).unwrap().clone();
 
     //caller register to exit node (this proxy act as the entry node in multi-hop connection)
     let success = caller.register(caller_proxy_id.clone()).await;
     assert!(success);
 
+    println!("dial");
     //dial
     let session_id_cal = caller.dial(answer.get_whitenoise_id()).await;
 
+    println!("answer listen");
     //wait for listen
     std::thread::sleep(std::time::Duration::from_secs(1));
     let session_id_ans = answer.notify_next_session().await.unwrap();
@@ -160,13 +177,7 @@ async fn circuit_connection_test() {
     let mut conn_ans = answer.get_circuit(session_id_ans.as_str()).unwrap();
     assert!(conn_ans.transport_state.is_some());
 
-
-    //relay node handle session
-    {
-        let guard = node.session_map.read().unwrap();
-        assert!(guard.contains_key(session_id_cal.as_str()));
-    }
-
+    println!("write message");
     //read and write
     let message = "hello there".as_bytes();
     let mut payload = Vec::with_capacity(4 + message.len());
@@ -179,6 +190,7 @@ async fn circuit_connection_test() {
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 
+    println!("read msg");
     let mut buf = [0u8; 1024];
     let msg_read = conn_ans.read(&mut buf).await;
     assert_eq!(msg_read.as_slice(), message);
