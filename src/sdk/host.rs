@@ -33,7 +33,7 @@ use libp2p::{gossipsub};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::network::node::{Node, TestNode};
+use crate::network::node::Node;
 use crate::network::proxy_event_handler::process_proxy_request;
 use crate::network::cmd_event_handler::process_cmd_request;
 use crate::{account, network};
@@ -224,6 +224,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                     info!("[WhiteNoise] local Multiaddress: {}", local_multi_addr);
                 }
             }
+            // swarm1.behaviour_mut().kad_dht.bootstrap();
             async_std::task::spawn(whitenoise_behaviour::whitenoise_server_event_loop(swarm1, node_request_receiver));
         }
     }
