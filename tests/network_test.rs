@@ -101,9 +101,11 @@ async fn register_test() {
     }
 }
 
+//Tests two clients creating privacy connection in a WhiteNoise Network with one bootstrap node and 6 relay nodes.
+//Relay nodes in the successfully generated connection are randomly chosen, and their roles (Entry, Joint, Relay, Exit) are shown in log.
 #[async_std::test]
 async fn circuit_connection_test() {
-    //log
+    //init log
     let env = env_logger::Env::new().filter_or("MY_LOG", "info");
     let mut builder = Builder::new();
     builder.parse_env(env);
@@ -121,7 +123,7 @@ async fn circuit_connection_test() {
     bootstrap_addr.push_str(boot_id.as_str());
 
     // //start nodes
-    let cnt = 4;
+    let cnt = 6;
     let mut node_vec = Vec::new();
     let mut port_int = 6661;
     for _i in 0..cnt {
