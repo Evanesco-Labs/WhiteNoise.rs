@@ -88,7 +88,7 @@ pub async fn start_poll(wraped_stream: WrappedStream) {
                     wraped_stream.in_sender.unbounded_send(read_res);
                     break;
                 }
-                if read_res.is_ok() && read_res.as_ref().unwrap().clone().len()<=0{
+                if read_res.is_ok() && read_res.as_ref().unwrap().clone().len()==0{
                     info!("[WhiteNoise] stream read len is zero");
                     wraped_stream.in_sender.unbounded_send(Err(ReadOneError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stream read len zero"))));
                     break;

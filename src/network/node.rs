@@ -97,7 +97,7 @@ impl Node {
         let peer_list = request_proto::PeersList::decode(data.data.as_slice()).unwrap();
         let mut new_peer_list = request_proto::PeersList { peers: Vec::new() };
         for peer in peer_list.peers.clone() {
-            if peer.addr.len() <= 0 {
+            if peer.addr.len() == 0 {
                 continue;
             }
             new_peer_list.peers.push(peer.clone());
