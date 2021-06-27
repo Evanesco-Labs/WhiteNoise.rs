@@ -437,7 +437,7 @@ pub fn get_kad_peers(swarm1: &mut Swarm<WhitenoiseServerBehaviour>, number: i32)
                         addresses.iter().for_each(|address| {
                             let address_str = address.to_string();
                             let p2p_str: Vec<&str> = address_str.matches("p2p").collect();
-                            if p2p_str.len() <= 0 {
+                            if p2p_str.len() == 0 {
                                 addrs.push(address_str);
                             } else {}
                         });
