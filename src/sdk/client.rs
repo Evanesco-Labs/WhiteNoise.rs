@@ -1,25 +1,24 @@
-use bytes::BufMut;
 use libp2p::{
     Multiaddr, PeerId,
 };
 
 use crate::network::{connection::CircuitConn, node::Node};
-use futures::{StreamExt, channel::mpsc};
+use futures::{StreamExt};
 
 use crate::sdk::{host, host::RunMode};
 use async_trait::async_trait;
-use log::{info, debug};
-use crate::account::account::Account;
+use log::{debug};
+use crate::account::account_service::Account;
 
 pub async fn process_new_stream(mut node: Node) {
     loop {
-        let mut stream = node.wait_for_relay_stream().await;
+        let stream = node.wait_for_relay_stream().await;
         debug!("have new stream");
         async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(stream.clone(), node.clone(), None));
     }
 }
 
-pub async fn process_new_session(mut node: Node, sender: futures::channel::mpsc::UnboundedSender<String>, exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>) {
+pub async fn process_new_session(node: Node, sender: futures::channel::mpsc::UnboundedSender<String>, exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>) {
     loop {
         let len = node.circuit_map.read().unwrap().len();
         if len > 0 {
@@ -35,7 +34,7 @@ pub async fn process_new_session(mut node: Node, sender: futures::channel::mpsc:
                 let session_id = session_id_opt.unwrap();
                 let cc = circuit_conn.unwrap();
                 if cc.transport_state.is_some() {
-                    sender.unbounded_send(session_id.clone());
+                    sender.unbounded_send(session_id.clone()).unwrap();
                     exist_session.lock().unwrap().insert(session_id, true);
                 }
             }
@@ -44,7 +43,7 @@ pub async fn process_new_session(mut node: Node, sender: futures::channel::mpsc:
     };
 }
 
-
+#[allow(dead_code)]
 pub struct WhiteNoiseClient {
     pub node: Node,
     bootstrap_addr_str: String,
@@ -75,22 +74,22 @@ pub trait Client {
 
 impl WhiteNoiseClient {
     pub fn init(bootstrap_addr_str: String, key_type: crate::account::key_types::KeyType, keypair: Option<libp2p::identity::Keypair>) -> Self {
-        let mut node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client, keypair, key_type);
+        let node = host::start(None, Some(bootstrap_addr_str.clone()), RunMode::Client, keypair, key_type);
         let parts: Vec<&str> = bootstrap_addr_str.split('/').collect();
-        let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
+        let bootstrap_peer_id_str = parts.last().unwrap();
         let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();
 
         let (new_connected_sender, new_connected_receiver) = futures::channel::mpsc::unbounded();
         let exist_session = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         async_std::task::spawn(process_new_stream(node.clone()));
         async_std::task::spawn(process_new_session(node.clone(), new_connected_sender, exist_session.clone()));
-        return WhiteNoiseClient {
-            node: node,
-            bootstrap_addr_str: bootstrap_addr_str,
-            bootstrap_peer_id: bootstrap_peer_id,
+        WhiteNoiseClient {
+            node,
+            bootstrap_addr_str,
+            bootstrap_peer_id,
             new_connected_session: std::sync::Arc::new(futures::lock::Mutex::new(new_connected_receiver)),
-            exist_session: exist_session.clone(),
-        };
+            exist_session,
+        }
     }
 }
 
@@ -112,9 +111,7 @@ impl Client for WhiteNoiseClient {
         return self.node.dial(remote_id).await;
     }
     fn get_circuit(&self, session_id: &str) -> Option<CircuitConn> {
-        self.node.circuit_map.read().unwrap().get(session_id).and_then(|x| {
-            Some(x.clone())
-        })
+        self.node.circuit_map.read().unwrap().get(session_id).cloned()
     }
     async fn send_message(&self, session_id: &str, data: &[u8]) {
         self.node.send_message(session_id, data).await;

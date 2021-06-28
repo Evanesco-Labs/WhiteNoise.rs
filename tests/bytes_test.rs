@@ -1,5 +1,5 @@
 use multihash::{Code, MultihashDigest};
-use bytes::BufMut;
+
 #[test]
 fn test_bytes(){
     let bytes1 = vec![1,2,3];

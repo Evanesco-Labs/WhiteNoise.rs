@@ -1,6 +1,6 @@
 use super::protocols::relay_behaviour::WrappedStream;
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver, lock::Mutex};
-use log::{info, error, warn, debug};
+use log::{info};
 use snow::{TransportState};
 use super::utils::{write_payload_arc};
 
@@ -26,7 +26,7 @@ impl CircuitConn {
         let len = self.transport_state.clone().unwrap().lock().unwrap().read_message(&payload, buf).unwrap();
         let real_size = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
         info!("[WhiteNoise] real size:{},buf len:{}", real_size, len);
-        return buf[4..(real_size + 4)].to_vec();
+        buf[4..(real_size + 4)].to_vec()
     }
     pub async fn write(&mut self, payload: &[u8], buf: &mut [u8]) {
         if self.transport_state.is_none() {

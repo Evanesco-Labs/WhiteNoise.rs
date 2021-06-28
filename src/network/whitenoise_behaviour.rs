@@ -14,7 +14,7 @@ use crate::network::protocols::relay_behaviour::{Relay, RelayEvent, WrappedStrea
 use std::collections::VecDeque;
 use libp2p::swarm::{NetworkBehaviourEventProcess, NetworkBehaviour};
 use libp2p::NetworkBehaviour;
-use log::{info, debug, warn};
+use log::{info, debug};
 use libp2p::kad::{Kademlia, KademliaEvent};
 use libp2p::kad::record::store::MemoryStore;
 use libp2p::gossipsub::{GossipsubMessage, GossipsubEvent, IdentTopic};
@@ -104,10 +104,7 @@ impl NetworkBehaviourEventProcess<RelayEvent> for WhitenoiseBehaviour {
             RelayEvent::Disconnect(peer_id) => {
                 debug!("whitenoise behaviour connection disconnect for peer_id:{}", peer_id);
                 let node_proxy_request = NodeProxyRequest { remote_peer_id: peer_id, proxy_request: None, peer_operation: Some(PeerOperation::Disconnect) };
-                self.proxy_request_channel.unbounded_send(node_proxy_request);
-            }
-            _ => {
-                warn!("unknown relay event poll");
+                self.proxy_request_channel.unbounded_send(node_proxy_request).unwrap();
             }
         }
     }
@@ -117,27 +114,24 @@ impl NetworkBehaviourEventProcess<RelayEvent> for WhitenoiseBehaviour {
 impl NetworkBehaviourEventProcess<RequestResponseEvent<ProxyRequest, ProxyResponse>> for WhitenoiseBehaviour {
     fn inject_event(&mut self, message: RequestResponseEvent<ProxyRequest, ProxyResponse>) {
         match message {
-            RequestResponseEvent::InboundFailure { peer, request_id, error } => {
+            RequestResponseEvent::InboundFailure { peer: _, request_id: _, error } => {
                 debug!("proxy inbound failure:{:?}", error);
             }
-            RequestResponseEvent::OutboundFailure { peer, request_id: req_id, error } => {
+            RequestResponseEvent::OutboundFailure { peer: _, request_id: _req_id, error } => {
                 debug!("proxy outbound failure:{:?}", error);
             }
             RequestResponseEvent::Message { peer, message } => {
                 debug!("proxy received mssage:{:?}", message);
-                match message {
-                    RequestResponseMessage::Request { request_id, request, .. } => {
-                        let node_proxy_request = NodeProxyRequest {
-                            remote_peer_id: peer,
-                            proxy_request: Some(request),
-                            peer_operation: None,
-                        };
-                        self.proxy_request_channel.unbounded_send(node_proxy_request);
-                    }
-                    _ => {}
+                if let RequestResponseMessage::Request { request_id: _, request, .. } = message {
+                    let node_proxy_request = NodeProxyRequest {
+                        remote_peer_id: peer,
+                        proxy_request: Some(request),
+                        peer_operation: None,
+                    };
+                    self.proxy_request_channel.unbounded_send(node_proxy_request).unwrap();
                 }
             }
-            RequestResponseEvent::ResponseSent { peer, request_id } => {
+            RequestResponseEvent::ResponseSent { peer: _, request_id } => {
                 debug!("proxy send response:{:?}", request_id);
             }
         }
@@ -147,26 +141,23 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<ProxyRequest, ProxyRespon
 impl NetworkBehaviourEventProcess<RequestResponseEvent<CmdRequest, CmdResponse>> for WhitenoiseBehaviour {
     fn inject_event(&mut self, message: RequestResponseEvent<CmdRequest, CmdResponse>) {
         match message {
-            RequestResponseEvent::InboundFailure { peer, request_id, error } => {
+            RequestResponseEvent::InboundFailure { peer: _, request_id: _, error } => {
                 debug!("cmd inbound failure:{:?}", error);
             }
-            RequestResponseEvent::OutboundFailure { peer, request_id: req_id, error } => {
+            RequestResponseEvent::OutboundFailure { peer: _, request_id: _req_id, error } => {
                 debug!("cmd outbound failure:{:?}", error);
             }
             RequestResponseEvent::Message { peer, message } => {
                 debug!("cmd received mssage:{:?}", message);
-                match message {
-                    RequestResponseMessage::Request { request_id, request, .. } => {
-                        let node_proxy_request = NodeCmdRequest {
-                            remote_peer_id: peer,
-                            cmd_request: Some(request),
-                        };
-                        self.cmd_request_channel.unbounded_send(node_proxy_request);
-                    }
-                    _ => {}
+                if let RequestResponseMessage::Request { request_id: _, request, .. } = message {
+                    let node_proxy_request = NodeCmdRequest {
+                        remote_peer_id: peer,
+                        cmd_request: Some(request),
+                    };
+                    self.cmd_request_channel.unbounded_send(node_proxy_request).unwrap();
                 }
             }
-            RequestResponseEvent::ResponseSent { peer, request_id } => {
+            RequestResponseEvent::ResponseSent { peer: _, request_id } => {
                 debug!("cmd send response:{:?}", request_id);
             }
         }
@@ -176,34 +167,31 @@ impl NetworkBehaviourEventProcess<RequestResponseEvent<CmdRequest, CmdResponse>>
 impl NetworkBehaviourEventProcess<RequestResponseEvent<AckRequest, AckResponse>> for WhitenoiseBehaviour {
     fn inject_event(&mut self, message: RequestResponseEvent<AckRequest, AckResponse>) {
         match message {
-            RequestResponseEvent::InboundFailure { peer, request_id, error } => {
+            RequestResponseEvent::InboundFailure { peer: _, request_id: _, error } => {
                 debug!("ack inbound failure:{:?}", error);
             }
-            RequestResponseEvent::OutboundFailure { peer, request_id: req_id, error } => {
+            RequestResponseEvent::OutboundFailure { peer: _, request_id: _req_id, error } => {
                 debug!("ack outbound failure:{:?}", error);
             }
-            RequestResponseEvent::Message { peer, message } => {
-                debug!("ack received mssage:{:?}", message);
-                match message {
-                    RequestResponseMessage::Request { request_id, request, channel } => {
-                        let AckRequest(data) = request.clone();
-                        let mut guard = self.event_bus.write().unwrap();
-                        debug!("receive {}", data.command_id);
-                        let sender_option = (*guard).remove(&(data.command_id));
-                        match sender_option {
-                            Some(sender) => {
-                                debug!("ack prepare to send");
-                                sender.send(request.clone());
-                            }
-                            None => {
-                                debug!("ack prepare to send,but no sender");
-                            }
+            RequestResponseEvent::Message { peer: _, message } => {
+                debug!("ack received message:{:?}", message);
+                if let RequestResponseMessage::Request { request_id: _, request, channel: _ } = message {
+                    let AckRequest(data) = request.clone();
+                    let mut guard = self.event_bus.write().unwrap();
+                    debug!("receive {}", data.command_id);
+                    let sender_option = (*guard).remove(&(data.command_id));
+                    match sender_option {
+                        Some(sender) => {
+                            debug!("ack prepare to send");
+                            sender.send(request).unwrap();
+                        }
+                        None => {
+                            debug!("ack prepare to send,but no sender");
                         }
                     }
-                    _ => {}
                 }
             }
-            RequestResponseEvent::ResponseSent { peer, request_id } => {
+            RequestResponseEvent::ResponseSent { peer: _, request_id } => {
                 debug!("ack send response:{:?}", request_id);
             }
         }
@@ -230,10 +218,10 @@ impl NetworkBehaviourEventProcess<()> for WhitenoiseServerBehaviour {
 impl NetworkBehaviourEventProcess<GossipsubEvent> for WhitenoiseServerBehaviour {
     fn inject_event(&mut self, event: GossipsubEvent) {
         match event {
-            GossipsubEvent::Message { propagation_source, message_id, message } => {
-                self.publish_channel.unbounded_send(message);
+            GossipsubEvent::Message { propagation_source: _, message_id: _, message } => {
+                self.publish_channel.unbounded_send(message).unwrap();
             }
-            GossipsubEvent::Subscribed { peer_id, .. } => {}
+            GossipsubEvent::Subscribed { peer_id: _, .. } => {}
             _ => {}
         }
     }
@@ -245,13 +233,13 @@ impl NetworkBehaviourEventProcess<KademliaEvent> for WhitenoiseServerBehaviour {
             KademliaEvent::RoutablePeer { peer, address } => {
                 info!("[WhiteNoise] routable peer,peer:{:?},addresses:{:?}", peer, address);
             }
-            KademliaEvent::RoutingUpdated { peer, addresses, old_peer } => {
+            KademliaEvent::RoutingUpdated { peer, addresses, old_peer: _ } => {
                 info!("[WhiteNoise] routing updated,peer:{:?},addresses:{:?}", peer, addresses);
             }
             KademliaEvent::UnroutablePeer { peer } => {
                 info!("[WhiteNoise] unroutable peer:{}", peer)
             }
-            KademliaEvent::QueryResult { id, result, .. } => {
+            KademliaEvent::QueryResult { id: _, result, .. } => {
                 info!("[WhiteNoise] query result:{:?}", result);
             }
             KademliaEvent::PendingRoutablePeer { peer, address } => {
@@ -276,7 +264,7 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerB
                         is_server_node = true;
                     }
                 });
-                if is_server_node == true {
+                if is_server_node {
                     for addr in listen_addrs {
                         debug!("identify addr:{:?}", addr);
                         self.kad_dht.add_address(&peer_id, addr);
@@ -291,7 +279,7 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerB
             identify::IdentifyEvent::Error { peer_id, error } => {
                 debug!("identify error: '{:?}',error: '{:?}'", peer_id, error);
             }
-            identify::IdentifyEvent::Pushed { peer_id } => {}
+            identify::IdentifyEvent::Pushed { peer_id: _ } => {}
         }
     }
 }
@@ -310,7 +298,7 @@ impl NetworkBehaviourEventProcess<()> for WhitenoiseClientBehaviour {
 
 impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseClientBehaviour {
     // Called when `identity` produces an event.
-    fn inject_event(&mut self, message: identify::IdentifyEvent) {}
+    fn inject_event(&mut self, _message: identify::IdentifyEvent) {}
 }
 
 
@@ -350,8 +338,8 @@ pub async fn whitenoise_client_event_loop(mut swarm1: Swarm<WhitenoiseClientBeha
                         debug!("receive new stream request:{},addresses:{:?}",node_new_stream.peer_id,peer_addr);
                         swarm1.behaviour_mut().whitenoise_behaviour.relay_behaviour.new_stream(&node_new_stream.peer_id);
                     }
-                    NodeRequest::GetMainNetsRequest(get_main_nets) =>{}
-                    NodeRequest::PublishData(data) =>{}
+                    NodeRequest::GetMainNetsRequest(_get_main_nets) =>{}
+                    NodeRequest::PublishData(_data) =>{}
                 }
             }
         }
@@ -398,12 +386,12 @@ pub async fn whitenoise_server_event_loop(mut swarm1: Swarm<WhitenoiseServerBeha
                     NodeRequest::GetMainNetsRequest(get_main_nets) =>{
                         debug!("prepare to return main net peers");
                         let peers = get_kad_peers(&mut swarm1,get_main_nets.num);
-                        get_main_nets.sender.send(peers);
+                        get_main_nets.sender.send(peers).unwrap();
                     }
                     NodeRequest::PublishData(PublishDataRequest{data,sender}) =>{
                         debug!("prepare to publish data");
-                        swarm1.behaviour_mut().gossip_sub.publish(IdentTopic::new("noise_topic"),data);
-                        sender.send(true);
+                        swarm1.behaviour_mut().gossip_sub.publish(IdentTopic::new("noise_topic"),data).unwrap();
+                        sender.send(true).unwrap();
                     }
                 }
             }
@@ -431,23 +419,23 @@ pub fn get_kad_peers(swarm1: &mut Swarm<WhitenoiseServerBehaviour>, number: i32)
                     NodeStatus::Disconnected => {}
                     NodeStatus::Connected => {
                         let peer_id = node.key.preimage().clone().to_base58();
-                        peer_ids.push(node.key.preimage().clone());
+                        peer_ids.push(*node.key.preimage());
                         let addresses = node.value.clone();
                         let mut addrs = Vec::new();
                         addresses.iter().for_each(|address| {
                             let address_str = address.to_string();
                             let p2p_str: Vec<&str> = address_str.matches("p2p").collect();
-                            if p2p_str.len() == 0 {
+                            if p2p_str.is_empty() {
                                 addrs.push(address_str);
                             } else {}
                         });
                         let node_info = request_proto::NodeInfo { id: peer_id, addr: addrs };
                         peers.push(node_info);
-                        cnt = cnt + 1;
+                        cnt += 1;
                     }
                 }
             }
         })
     });
-    return peers;
+    peers
 }

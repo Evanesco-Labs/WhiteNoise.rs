@@ -1,8 +1,8 @@
 use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
-use log::{info, debug, warn, error};
+use log::{info};
 use env_logger::Builder;
-use whitenoisers::sdk::client::{process_new_session, process_new_stream, WhiteNoiseClient, Client};
-use libp2p::core::PeerId;
+use whitenoisers::sdk::client::{WhiteNoiseClient, Client};
+
 use std::collections::HashMap;
 use whitenoisers::network::utils::from_whitenoise_to_hash;
 use bytes::BufMut;
@@ -41,8 +41,8 @@ async fn get_mainnet_test() {
 
     //start client
     let keypair = libp2p::identity::Keypair::generate_ed25519();
-    let mut client = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(keypair));
-    let mut peers = client.get_main_net_peers(10).await;
+    let mut client = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(keypair));
+    let peers = client.get_main_net_peers(10).await;
     assert_eq!(peers.len(), cnt as usize);
     for id in peers {
         assert!(node_id_map.contains_key(id.to_string().as_str()));
@@ -62,7 +62,7 @@ async fn register_test() {
     bootstrap_addr.push_str(boot_id.as_str());
 
     //start nodes
-    let mut port_int = 6671;
+    let port_int = 6671;
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(keypair)).await;
 
@@ -71,8 +71,8 @@ async fn register_test() {
 
     //start client
     let keypair = libp2p::identity::Keypair::generate_ed25519();
-    let mut client = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(keypair));
-    let mut peers = client.get_main_net_peers(10).await;
+    let mut client = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(keypair));
+    let peers = client.get_main_net_peers(10).await;
     assert_eq!(peers.len(), 1 as usize);
 
     let proxy_id = peers.get(0).unwrap().clone();
@@ -140,8 +140,8 @@ async fn circuit_connection_test() {
 
     //start client as answer
     let answer_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let mut answer = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(answer_keypair));
-    let mut peers_caller = answer.get_main_net_peers(10).await;
+    let mut answer = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(answer_keypair));
+    let peers_caller = answer.get_main_net_peers(10).await;
     assert_eq!(peers_caller.len(), cnt as usize);
 
     let answer_proxy_id = peers_caller.get(0).unwrap().clone();
@@ -152,8 +152,8 @@ async fn circuit_connection_test() {
 
     //start client as caller
     let caller_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let mut caller = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(caller_keypair));
-    let mut peers_answer = caller.get_main_net_peers(10).await;
+    let mut caller = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(caller_keypair));
+    let peers_answer = caller.get_main_net_peers(10).await;
     assert_eq!(peers_answer.len(), cnt as usize);
 
     let caller_proxy_id = peers_answer.get(1).unwrap().clone();
