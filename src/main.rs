@@ -1,12 +1,3 @@
-use bytes::BufMut;
-use libp2p::{
-    Multiaddr, PeerId,
-    identity,
-    noise,
-};
-use prost::Message;
-use futures::{future::FutureExt, channel::mpsc};
-
 pub mod request_proto {
     include!(concat!(env!("OUT_DIR"), "/request_proto.rs"));
 }
@@ -36,22 +27,17 @@ pub mod sdk;
 pub mod account;
 pub mod models;
 
-use rand::{self};
-use crate::network::connection::CircuitConn;
 
 use std::error::Error;
-use multihash::{Code, MultihashDigest};
-use log::{info, debug};
-use network::{node};
-use sdk::chat_message::ChatMessage;
+
+use log::{info};
+
 use clap::{Arg, App, SubCommand};
 
-use crate::sdk::host::{self, RunMode};
-use crate::network::session::{SessionRole};
-use env_logger::{Builder, Env};
-use crate::network::const_vb::BUF_LEN;
-use crate::sdk::client::{WhiteNoiseClient, Client};
+use env_logger::{Builder};
+
 use whitenoisers::sdk::host::start_server;
+use futures::channel::oneshot;
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -93,22 +79,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         info!("[WhiteNoise] bootstrap_addr:{:?}", bootstrap_addr_str_option);
         let port_str_option = x.value_of("port");
         info!("[WhiteNoise] port str:{:?}", port_str_option);
-        let bootstrap_addr_option = match bootstrap_addr_str_option {
-            None => None,
-            Some(bootstrap_addr_str) => {
-                Some(String::from(bootstrap_addr_str))
-            }
-        };
-        let port_option = match port_str_option {
-            None => None,
-            Some(x) => Some(String::from(x))
-        };
+        let bootstrap_addr_option = bootstrap_addr_str_option.map(String::from);
+        let port_option = port_str_option.map(String::from);
         let key_type = String::from(x.value_of("ktype").unwrap_or("ed25519"));
 
-        let node = start_server(bootstrap_addr_option, port_option, key_type, None).await;
-        loop {}
+        let (_sender, receiver) = oneshot::channel::<()>();
+        let _node = start_server(bootstrap_addr_option, port_option, key_type, None).await;
+        receiver.await.unwrap();
     }
     Ok(())
 }
-
-

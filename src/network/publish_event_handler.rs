@@ -1,8 +1,7 @@
 use libp2p::{PeerId};
 use crate::{command_proto, gossip_proto, network::{protocols::cmd_protocol::CmdRequest,
                                                    utils::{from_bytes_get_id},
-                                                   whitenoise_behaviour::NodeCmdRequest},
-            relay_proto, request_proto};
+                                                   whitenoise_behaviour::NodeCmdRequest}, request_proto};
 use prost::Message;
 use log::{info};
 use super::{whitenoise_behaviour::{GetMainNets}};
@@ -13,8 +12,8 @@ use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use super::utils::{from_whitenoise_to_hash};
 use super::node::{Node};
 use super::session::SessionRole;
-use super::utils::{from_request_get_id, forward_relay, send_relay_twoway, new_relay_circuit_success, new_relay_probe};
-use multihash::{Code, MultihashDigest};
+use super::utils::{from_request_get_id, send_relay_twoway, new_relay_circuit_success, new_relay_probe};
+
 
 use libp2p::gossipsub::{
     GossipsubMessage
@@ -29,12 +28,9 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
         let gossipsub_message = gossipsub_message_opt.unwrap();
         let encrypted_neg = gossip_proto::EncryptedNeg::decode(gossipsub_message.data.as_slice()).unwrap();
         if node.client_wn_map.read().unwrap().contains_key(&encrypted_neg.des) {
-            let client_info = node.client_wn_map.read().unwrap().get(&encrypted_neg.des).and_then(|x| {
-                Some(x.clone())
-            }).unwrap();
-
+            let client_info = node.client_wn_map.read().unwrap().get(&encrypted_neg.des).cloned().unwrap();
             let cypher = encrypted_neg.cypher;
-            let decrypt = request_proto::Decrypt { cypher: cypher, destination: encrypted_neg.des.clone() };
+            let decrypt = request_proto::Decrypt { cypher, destination: encrypted_neg.des.clone() };
             let mut decrypt_data = Vec::new();
             decrypt.encode(&mut decrypt_data).unwrap();
             let mut request = request_proto::Request {
@@ -45,7 +41,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             };
             let key = from_request_get_id(&request);
             request.req_id = key.clone();
-            let node_request = NodeRequest::ProxyRequest(NodeProxyRequest { remote_peer_id: client_info.peer_id.clone(), proxy_request: Some(ProxyRequest(request)), peer_operation: None });
+            let node_request = NodeRequest::ProxyRequest(NodeProxyRequest { remote_peer_id: client_info.peer_id, proxy_request: Some(ProxyRequest(request)), peer_operation: None });
             let ack_response = node.external_send_node_request_and_wait(key, node_request).await;
             let AckRequest(ack) = ack_response;
             if !ack.result {
@@ -65,12 +61,8 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
 
                 let circuit_success_relay = new_relay_circuit_success(&negotiate.session_id);
                 let new_session_opt = {
-                    let mut guard = node.session_map.write().unwrap();
-                    let session_opt = (*guard).get(&negotiate.session_id);
-                    match session_opt {
-                        None => None,
-                        Some(x) => Some(x.clone())
-                    }
+                    let guard = node.session_map.write().unwrap();
+                    (*guard).get(&negotiate.session_id).cloned()
                 };
                 if new_session_opt.is_none() {
                     info!("[WhiteNoise] joint and exit node have no session");
@@ -84,8 +76,8 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
             }
 
             let (sender, receiver) = futures::channel::oneshot::channel();
-            let get_main_nets = GetMainNets { command_id: String::from("123"), remote_peer_id: PeerId::random(), num: 100, sender: sender };
-            node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets));
+            let get_main_nets = GetMainNets { command_id: String::from("123"), remote_peer_id: PeerId::random(), num: 100, sender };
+            node.node_request_sender.unbounded_send(NodeRequest::GetMainNetsRequest(get_main_nets)).unwrap();
             let nodeinfos_res = receiver.await;
             if nodeinfos_res.is_err() {
                 info!("[WhiteNoise] get other nets error");
@@ -100,12 +92,12 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                 info!("[WhiteNoise] try {} for connecto to other peer for relay role", i);
                 let mut index = rand::random::<usize>();
 
-                for j in 0..(nodeinfos.len()) {
-                    index = index + 1;
-                    index = index % nodeinfos.len();
+                for _j in 0..(nodeinfos.len()) {
+                    index += 1;
+                    index %= nodeinfos.len();
                     let id = nodeinfos.get(index).unwrap().id.clone();
                     if !invalid.contains_key(&id) && id != node.get_id() && id != negotiate.join {
-                        let remote_client_white_noise_id_hash = node.client_peer_map.read().unwrap().get(&id).and_then(|x| Some(x.clone()));
+                        let remote_client_white_noise_id_hash = node.client_peer_map.read().unwrap().get(&id).cloned();
                         if remote_client_white_noise_id_hash.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id_hash.unwrap().as_str()) != encrypted_neg.des {
                             relay = PeerId::from_bytes(bs58::decode(id).into_vec().unwrap().as_slice()).unwrap();
                             break;
@@ -157,9 +149,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
 
             let probe_relay = new_relay_probe(negotiate.session_id.as_str());
 
-            let session_opt = node.session_map.read().unwrap().get(&negotiate.session_id).and_then(|session| {
-                return Some(session.clone());
-            });
+            let session_opt = node.session_map.read().unwrap().get(&negotiate.session_id).cloned();
             if session_opt.is_none() {
                 info!("[WhiteNoise] publish want to send probe,but session is null");
                 continue;

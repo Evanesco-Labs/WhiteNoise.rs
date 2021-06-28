@@ -7,15 +7,15 @@ use super::{protocols::relay_behaviour::WrappedStream};
 use super::protocols::ack_protocol::{AckRequest};
 use snow::{params::NoiseParams, Builder, HandshakeState};
 use super::whitenoise_behaviour::{NodeRequest, NodeAckRequest};
-use super::node::{self, Node};
-use super::utils::{read_from_negotiated_arc, write_relay_arc,
+use super::node::{Node};
+use super::utils::{read_from_negotiated_arc,
                    write_handshake_payload_arc, generate_handshake_payload,
                    handle_remote_handshake_payload, write_disconnect_arc,
                    forward_relay, send_relay_twoway, new_relay_circuit_success};
 use super::session::{Session, SessionRole, PairStream};
 use super::connection::CircuitConn;
 
-pub async fn relay_event_handler(mut stream: WrappedStream, mut node: Node, mut session_id: std::option::Option<String>) {
+pub async fn relay_event_handler(stream: WrappedStream, mut node: Node, mut session_id: std::option::Option<String>) {
     loop {
         let read_relay_option = read_from_negotiated_arc(stream.clone()).await;
         if read_relay_option.is_err() {
@@ -28,15 +28,11 @@ pub async fn relay_event_handler(mut stream: WrappedStream, mut node: Node, mut 
                     let session_opt = (*guard).get(&session_id.clone().unwrap());
                     if session_opt.is_some() {
                         let session = session_opt.unwrap();
-                        if session.pair_stream.early_stream.is_some() {
-                            if session.pair_stream.early_stream.as_ref().unwrap().stream_id == cur_stream_id {
-                                find_stream = true;
-                            }
+                        if session.pair_stream.early_stream.is_some() && session.pair_stream.early_stream.as_ref().unwrap().stream_id == cur_stream_id {
+                            find_stream = true;
                         }
-                        if session.pair_stream.later_stream.is_some() {
-                            if session.pair_stream.later_stream.as_ref().unwrap().stream_id == cur_stream_id {
-                                find_stream = true;
-                            }
+                        if session.pair_stream.later_stream.is_some() && session.pair_stream.later_stream.as_ref().unwrap().stream_id == cur_stream_id {
+                            find_stream = true;
                         }
                     }
                     find_stream
@@ -86,9 +82,7 @@ pub async fn relay_event_handler(mut stream: WrappedStream, mut node: Node, mut 
 
 pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: WrappedStream, relay: relay_proto::Relay) {
     let probe = relay_proto::ProbeSignal::decode(relay.data.as_slice()).unwrap();
-    let session = node.session_map.read().unwrap().get(&session_id).and_then(|session| {
-        Some(session.clone())
-    });
+    let session = node.session_map.read().unwrap().get(&session_id).cloned();
     if session.is_none() {
         return;
     }
@@ -96,9 +90,7 @@ pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: Wrap
         info!("[WhiteNoise] i am joint node,session id:{}", session_id);
         if node.probe_map.read().unwrap().contains_key(&session_id) {
             info!("[WhiteNoise] i contains probe");
-            let exist_probe = node.probe_map.read().unwrap().get(&session_id).and_then(|x| {
-                Some(x.clone())
-            });
+            let exist_probe = node.probe_map.read().unwrap().get(&session_id).cloned();
             if exist_probe.unwrap().rand == probe.data {
                 info!("[WhiteNoise] exist probe and probe equals");
                 let circuit_success_relay = new_relay_circuit_success(&session_id);
@@ -125,7 +117,7 @@ pub async fn handle_relay_probe(mut node: Node, session_id: String, stream: Wrap
     }
 }
 
-pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
+pub async fn handle_success(node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
     info!("[WhiteNoise] relay event handler start handle success");
     let relay_success_rst = relay_proto::CircuitSuccess::decode(relay.data.as_slice());
     if relay_success_rst.is_err() {
@@ -134,11 +126,7 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
     let relay_success = relay_success_rst.unwrap();
     let session = {
         let guard = node.session_map.read().unwrap();
-        let session_inner = (*guard).get(&relay_success.session_id);
-        match session_inner {
-            None => None,
-            Some(x) => Some(x.clone())
-        }
+        (*guard).get(&relay_success.session_id).cloned()
     };
     if session.is_none() {
         return;
@@ -160,7 +148,6 @@ pub async fn handle_success(mut node: Node, relay: relay_proto::Relay, stream: W
             cc.clone()
         };
         async_std::task::spawn(process_handshake(circuit_conn, false, relay_success.session_id.clone(), node.clone()));
-        return;
     } else {
         debug!("relay event handler start handle success,not caller,not not answer");
         if session.as_ref().unwrap().ready() {
@@ -182,7 +169,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
 
         let bb = noise_keys.public().as_ref();
         info!("[WhiteNoise] noise pub key:{}", bs58::encode(bb).into_string());
-        let msg = ["noise-libp2p-static-key:".as_bytes(), bb].concat();
+        let _msg = ["noise-libp2p-static-key:".as_bytes(), bb].concat();
 
         let params: NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap();
 
@@ -207,7 +194,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
         let len = noise.write_message(&payload, &mut buf).unwrap();
         write_handshake_payload_arc(circuit_conn.out_stream.clone(), &buf[..len], len, &session_id).await;
 
-        let mut noise = noise.into_transport_mode().unwrap();
+        let noise = noise.into_transport_mode().unwrap();
 
         circuit_conn.transport_state = Some(std::sync::Arc::new(std::sync::Mutex::new(noise)));
         {
@@ -239,7 +226,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
             builder.local_private_key(&noise_keys.secret().as_ref()).build_responder().unwrap();
         // <- e
         //crate::network::utils::read_handshake_payload_arc(stream.clone(), &mut noise, &mut buf).await;
-        let len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
+        let _len = handle_read_shake(circuit_conn.in_channel_receiver.lock().await.next().await.unwrap(), &mut noise, &mut buf);
 
         // -> e, ee, s, es
         let payload = generate_handshake_payload(noise_keys.into_identity()).await;
@@ -256,7 +243,7 @@ pub async fn process_handshake(mut circuit_conn: CircuitConn, initiate: bool, se
         let verify_success = crate::network::utils::handle_remote_handshake_payload(&buf[..len], pubkey);
         info!("[WhiteNoise] verify success:{}", verify_success);
 
-        let mut noise = noise.into_transport_mode().unwrap();
+        let noise = noise.into_transport_mode().unwrap();
         circuit_conn.transport_state = Some(std::sync::Arc::new(std::sync::Mutex::new(noise)));
         {
             let mut guard = node.circuit_map.write().unwrap();
@@ -270,10 +257,10 @@ pub fn handle_read_shake(data: Vec<u8>, noise: &mut HandshakeState, buf: &mut Ve
     let buf_len = data[0] as usize * 256 + data[1] as usize;
     info!("[WhiteNoise] relay data len:{},real buf len:{}", data.len(), buf_len);
     let payload = data[2..(2 + buf_len)].to_vec();
-    return noise.read_message(&payload, buf).unwrap();
+    noise.read_message(&payload, buf).unwrap()
 }
 
-pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
+pub async fn handle_relay_msg(node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
     let relay_msg_rst = relay_proto::RelayMsg::decode(relay.data.as_slice());
     if relay_msg_rst.is_err() {
         return;
@@ -282,11 +269,7 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
 
     let session = {
         let guard = node.session_map.read().unwrap();
-        let session_inner = (*guard).get(&relay_msg.session_id);
-        match session_inner {
-            None => None,
-            Some(x) => Some(x.clone())
-        }
+        (*guard).get(&relay_msg.session_id).cloned()
     };
     if session.is_none() {
         info!("[WhiteNoise] receive relay msg,peer_id:{:?},session is null", stream.remote_peer_id);
@@ -297,27 +280,21 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
         let circuit_conn_opt = (*guard).get(&relay_msg.session_id);
         if circuit_conn_opt.is_some() {
             let circuit_conn = circuit_conn_opt.unwrap();
-            circuit_conn.in_channel_sender.unbounded_send(relay_msg.data);
+            circuit_conn.in_channel_sender.unbounded_send(relay_msg.data).unwrap();
         }
+    } else if session.as_ref().unwrap().ready() {
+        info!("[WhiteNoise] relaying message, from peer_id:{:?}", stream.remote_peer_id);
+        forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
     } else {
-        if session.as_ref().unwrap().ready() {
-            info!("[WhiteNoise] relaying message, from peer_id:{:?}", stream.remote_peer_id);
-            forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
-        } else {
-            debug!("relay stream not ready");
-        }
+        debug!("relay stream not ready");
     }
 }
 
 pub async fn handle_set_session(mut node: Node, relay_set_session: relay_proto::SetSessionIdMsg, stream: WrappedStream, relay_id: String) {
     debug!("start to process set session id:{},stream remote:{}", relay_set_session.session_id, stream.remote_peer_id.to_base58());
-    let mut session = {
+    let session = {
         let guard = node.session_map.write().unwrap();
-        let session_option = (*guard).get(&relay_set_session.session_id);
-        match session_option {
-            None => None,
-            Some(x) => Some(x.clone())
-        }
+        (*guard).get(&relay_set_session.session_id).cloned()
     };
     if session.is_some() && session.as_ref().unwrap().session_role == (SessionRole::EntryRole as i32) && relay_set_session.role == (SessionRole::RelayRole as i32) {
         info!("[WhiteNoise] start to process set session id,entry and relay are the same");
@@ -333,19 +310,19 @@ pub async fn handle_set_session(mut node: Node, relay_set_session: relay_proto::
             to_close_stream.close().await;
             debug!("start to process set session id,entry and relay are the same,send set session ack:{}", stream.remote_peer_id);
             let ack = command_proto::Ack { command_id: relay_id.clone(), result: true, data: Vec::new() };
-            let node_ack_request = NodeAckRequest { remote_peer_id: stream.remote_peer_id.clone(), ack_request: Some(AckRequest(ack)) };
+            let node_ack_request = NodeAckRequest { remote_peer_id: stream.remote_peer_id, ack_request: Some(AckRequest(ack)) };
             let ack_request = NodeRequest::AckRequest(node_ack_request);
             node.send_ack(ack_request).await;
             return;
         } else {
             node.handle_close_session(&relay_set_session.session_id).await;
-            return;
         }
+        return;
     }
     if session.is_none() {
         debug!("start to process set session id,new session");
         let pair_stream = PairStream { early_stream: Some(stream.clone()), later_stream: None };
-        let session = Session { id: relay_set_session.session_id.clone(), session_role: relay_set_session.role, pair_stream: pair_stream };
+        let session = Session { id: relay_set_session.session_id.clone(), session_role: relay_set_session.role, pair_stream };
         let mut guard = node.session_map.write().unwrap();
         (*guard).insert(relay_set_session.session_id.clone(), session);
     } else {
@@ -357,22 +334,32 @@ pub async fn handle_set_session(mut node: Node, relay_set_session: relay_proto::
     }
     debug!("start to process set session id,start to send ack");
     let ack = command_proto::Ack { command_id: relay_id.clone(), result: true, data: Vec::new() };
-    let node_ack_request = NodeAckRequest { remote_peer_id: stream.remote_peer_id.clone(), ack_request: Some(AckRequest(ack)) };
+    let node_ack_request = NodeAckRequest { remote_peer_id: stream.remote_peer_id, ack_request: Some(AckRequest(ack)) };
     let ack_request = NodeRequest::AckRequest(node_ack_request);
     node.send_ack(ack_request).await;
 }
 
 pub async fn add_circuit_conn(node: Node, session_id: String, stream: WrappedStream) {
     let mut guard = node.circuit_map.write().unwrap();
-    if !(*guard).contains_key(&session_id) {
+    (*guard).entry(session_id.clone()).or_insert_with(|| {
         let (sender, receiver) = mpsc::unbounded();
-        let circuit_conn = CircuitConn {
+        CircuitConn {
             id: session_id.clone(),
-            out_stream: stream.clone(),
+            out_stream: stream,
             in_channel_receiver: std::sync::Arc::new(futures::lock::Mutex::new(receiver)),
             in_channel_sender: sender,
             transport_state: None,
-        };
-        (*guard).insert(session_id.clone(), circuit_conn);
-    }
+        }
+    });
+    // if !(*guard).contains_key(&session_id) {
+    //     let (sender, receiver) = mpsc::unbounded();
+    //     let circuit_conn = CircuitConn {
+    //         id: session_id.clone(),
+    //         out_stream: stream,
+    //         in_channel_receiver: std::sync::Arc::new(futures::lock::Mutex::new(receiver)),
+    //         in_channel_sender: sender,
+    //         transport_state: None,
+    //     };
+    //     (*guard).insert(session_id, circuit_conn);
+    // }
 }

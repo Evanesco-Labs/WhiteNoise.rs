@@ -1,6 +1,6 @@
 use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
-use log::{info, debug, warn, error};
-use env_logger::Builder;
+
+
 use whitenoisers::sdk::host::start_server;
 
 #[async_std::test]
@@ -34,7 +34,7 @@ fn whitenoiseid_hash_test() {
     if let libp2p::identity::Keypair::Ed25519(k) = &keypair {
         println!("pk encode {:?}", k.public().encode())
     }
-    let id = account::account::Account::from_keypair_to_whitenoise_id(&keypair);
+    let id = account::account_service::Account::from_keypair_to_whitenoise_id(&keypair);
     println!("id {:?}", id.as_str());
     let hash = network::utils::from_whitenoise_to_hash(id.as_str());
     println!("hash {:?}", hash);

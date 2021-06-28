@@ -11,7 +11,7 @@ pub struct Account {}
 
 impl Account {
     pub fn get_default_account_keypair(path: &str, key_type: super::key_types::KeyType) -> Keypair {
-        let mut opt = rusty_leveldb::Options::default();
+        let opt = rusty_leveldb::Options::default();
         let mut db = DB::open(path, opt).unwrap();
         let mut key = String::from("default");
         let key_type_index = key_type.to_i32().to_string();
@@ -26,10 +26,10 @@ impl Account {
 
                 match keypair.clone() {
                     identity::Keypair::Ed25519(k) => {
-                        db.put(key.as_bytes(), &(k.encode()));
+                        db.put(key.as_bytes(), &(k.encode())).unwrap();
                     }
                     identity::Keypair::Secp256k1(k) => {
-                        db.put(key.as_bytes(), &k.secret().to_bytes());
+                        db.put(key.as_bytes(), &k.secret().to_bytes()).unwrap();
                     }
                     _ => {
                         panic!("we only support ed25519 or secp256k1");
@@ -52,17 +52,17 @@ impl Account {
             identity::Keypair::Ed25519(k) => {
                 let mut encoded = String::from("0");
                 encoded.push_str(bs58::encode(k.public().encode()).into_string().as_str());
-                return encoded;
+                encoded
             }
             identity::Keypair::Secp256k1(k) => {
                 let mut encoded = String::from("1");
                 encoded.push_str(bs58::encode(k.public().encode()).into_string().as_str());
-                return encoded;
+                encoded
             }
             _ => {
                 panic!("keypair format not ed15519 or secp256k1");
             }
-        };
+        }
     }
 
     pub fn from_keypair_to_secretkey_bytes(keypair: &identity::Keypair) -> Vec<u8> {
@@ -74,7 +74,7 @@ impl Account {
                 panic!("keypair format not ed25519");
             }
         };
-        return secret_key;
+        secret_key
     }
 
     pub fn ecies_encrypt(pub_bytes: &[u8], plain: &[u8]) -> Vec<u8> {
@@ -83,7 +83,7 @@ impl Account {
 
         let mut public_key = Public::default();
         public_key.copy_from_slice(&serialized[1..65]);
-        return ecies::encrypt(&public_key, b"", plain).unwrap();
+        ecies::encrypt(&public_key, b"", plain).unwrap()
     }
 
     pub fn ecies_ed25519_encrypt(pub_bytes: &[u8], plain: &[u8]) -> Vec<u8> {
@@ -92,13 +92,13 @@ impl Account {
         let mut csprng = rand::thread_rng();
         let encrypted = ecies_ed25519::encrypt(&public, plain, &mut csprng).unwrap();
         debug!("encrypt result:{}", bs58::encode(&encrypted).into_string());
-        return encrypted;
+        encrypted
     }
 
     pub fn ecies_decrypt(keypair: &identity::Keypair, encrypted: &[u8]) -> Result<Vec<u8>, Error> {
         let secret_key = Self::from_keypair_to_secretkey_bytes(keypair);
         let secret = Secret::from_slice(&secret_key).unwrap();
-        return ecies::decrypt(&secret, b"", encrypted);
+        ecies::decrypt(&secret, b"", encrypted)
     }
 
     pub fn ecies_ed25519_decrypt(keypair: &identity::Keypair, encrypted: &[u8]) -> Result<Vec<u8>, ecies_ed25519::Error> {
@@ -127,6 +127,6 @@ impl Account {
         lower[31] |= 64;
 
         let secret = ecies_ed25519::SecretKey::from_bytes(&lower).unwrap();
-        return ecies_ed25519::decrypt(&secret, &encrypted);
+        ecies_ed25519::decrypt(&secret, &encrypted)
     }
 }

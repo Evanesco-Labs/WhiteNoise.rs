@@ -27,7 +27,7 @@ pub fn from_bytes_get_id(buf: &[u8]) -> String {
 }
 
 pub fn from_whitenoise_to_hash(whitenoise_id: &str) -> String {
-    let (index, pub_bytes) = whitenoise_id.split_at(1);
+    let (_index, pub_bytes) = whitenoise_id.split_at(1);
     let whitenoise_bytes = bs58::decode(pub_bytes).into_vec().unwrap();
     let hash_algorithm = Code::Sha2_256;
     let hash = hash_algorithm.digest(&whitenoise_bytes);
@@ -37,13 +37,13 @@ pub fn from_whitenoise_to_hash(whitenoise_id: &str) -> String {
 
 pub async fn write_relay_arc(mut stream: WrappedStream, mut relay: relay_proto::Relay) -> String {
     let mut relay_data = Vec::new();
-    relay.encode(&mut relay_data);
+    relay.encode(&mut relay_data).unwrap();
     let key = from_bytes_get_id(&relay_data);
     relay.id = key.clone();
     let mut relay_data = Vec::new();
-    relay.encode(&mut relay_data);
+    relay.encode(&mut relay_data).unwrap();
     stream.write(relay_data).await;
-    return key;
+    key
 }
 
 pub async fn write_payload_arc(stream: WrappedStream, buf: &[u8], len: usize, session_id: &str) {
@@ -58,8 +58,8 @@ pub async fn write_payload_arc(stream: WrappedStream, buf: &[u8], len: usize, se
         data: new_buf,
     };
     let mut relay_msg_data = Vec::new();
-    relay_msg.encode(&mut relay_msg_data);
-    let mut relay = relay_proto::Relay {
+    relay_msg.encode(&mut relay_msg_data).unwrap();
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Data as i32,
         data: relay_msg_data,
@@ -74,52 +74,54 @@ pub fn handle_remote_handshake_payload(payload: &[u8], remote_static: &[u8]) -> 
     let id_sig = noise_shakehand_payload.identity_sig;
 
     let id_pub_key = identity::PublicKey::from_protobuf_encoding(&id_key).unwrap();
-    return id_pub_key.verify(&[b"noise-libp2p-static-key:", remote_static].concat(), &id_sig);
+    id_pub_key.verify(&[b"noise-libp2p-static-key:", remote_static].concat(), &id_sig)
 }
 
 pub async fn generate_handshake_payload(identity: KeypairIdentity) -> Vec<u8> {
-    let mut pb = payload_proto::NoiseHandshakePayload::default();
-    pb.identity_key = identity.public.clone().into_protobuf_encoding();
+    let pb = payload_proto::NoiseHandshakePayload {
+        identity_key: identity.public.clone().into_protobuf_encoding(),
+        identity_sig: identity.signature.unwrap(),
+        ..Default::default()
+    };
     info!("[WhiteNoise] public key:{}", bs58::encode(pb.identity_key.as_slice()).into_string());
-    pb.identity_sig = identity.signature.clone().unwrap();
     info!("[WhiteNoise] signature:{}", bs58::encode(pb.identity_sig.as_slice()).into_string());
     let mut msg = Vec::with_capacity(pb.encoded_len());
     pb.encode(&mut msg).unwrap();
-    return msg;
+    msg
 }
 
 pub async fn write_relay(stream: &mut NegotiatedSubstream, mut relay: relay_proto::Relay) -> String {
     let mut relay_data = Vec::new();
-    relay.encode(&mut relay_data);
+    relay.encode(&mut relay_data).unwrap();
     let key = from_bytes_get_id(&relay_data);
     relay.id = key.clone();
     let mut relay_data = Vec::new();
-    relay.encode(&mut relay_data);
+    relay.encode(&mut relay_data).unwrap();
 
     upgrade::write_with_len_prefix(stream, &relay_data).map_err(|e| {
         info!("[WhiteNoise] write relay error:{:?}", e);
         io::Error::new(io::ErrorKind::InvalidData, e)
     }).await.unwrap();
-    return key;
+    key
 }
 
 pub async fn write_disconnect_arc(stream: WrappedStream, session_id: String) {
     let disconnect_relay = relay_proto::Disconnect {
-        session_id: session_id,
+        session_id,
         err_code: 0,
     };
     let mut data = Vec::new();
-    disconnect_relay.encode(&mut data);
-    let mut relay = relay_proto::Relay {
+    disconnect_relay.encode(&mut data).unwrap();
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Disconnect as i32,
-        data: data,
+        data,
     };
     write_relay_arc(stream.clone(), relay).await;
 }
 
 pub async fn write_relay_wake_arc(stream: WrappedStream) {
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Wake as i32,
         data: Vec::new(),
@@ -128,7 +130,7 @@ pub async fn write_relay_wake_arc(stream: WrappedStream) {
 }
 
 pub async fn write_relay_wake(stream: &mut NegotiatedSubstream) {
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Wake as i32,
         data: Vec::new(),
@@ -138,48 +140,48 @@ pub async fn write_relay_wake(stream: &mut NegotiatedSubstream) {
 
 pub async fn write_set_session_with_role_arc(stream: WrappedStream, session_id: String, session_role: i32) -> String {
     let cmd = relay_proto::SetSessionIdMsg {
-        session_id: session_id,
+        session_id,
         role: session_role,
     };
     let mut data = Vec::new();
     cmd.encode(&mut data).unwrap();
 
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
-        data: data,
+        data,
     };
     return write_relay_arc(stream.clone(), relay).await;
 }
 
 pub async fn write_set_session_arc(stream: WrappedStream, session_id: String) -> String {
     let cmd = relay_proto::SetSessionIdMsg {
-        session_id: session_id,
+        session_id,
         role: SessionRole::EntryRole as i32,
     };
     let mut data = Vec::new();
     cmd.encode(&mut data).unwrap();
 
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
-        data: data,
+        data,
     };
     return write_relay_arc(stream.clone(), relay).await;
 }
 
 pub async fn write_set_session(stream: &mut NegotiatedSubstream, session_id: String) -> String {
     let cmd = relay_proto::SetSessionIdMsg {
-        session_id: session_id,
+        session_id,
         role: SessionRole::EntryRole as i32,
     };
     let mut data = Vec::new();
     cmd.encode(&mut data).unwrap();
 
-    let mut relay = relay_proto::Relay {
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
-        data: data,
+        data,
     };
     return write_relay(stream, relay).await;
 }
@@ -195,8 +197,8 @@ pub async fn write_payload(stream: &mut NegotiatedSubstream, buf: &[u8], len: us
         data: new_buf,
     };
     let mut relay_msg_data = Vec::new();
-    relay_msg.encode(&mut relay_msg_data);
-    let mut relay = relay_proto::Relay {
+    relay_msg.encode(&mut relay_msg_data).unwrap();
+    let relay = relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Data as i32,
         data: relay_msg_data,
@@ -258,33 +260,29 @@ pub async fn read_payload(stream: &mut NegotiatedSubstream) -> Vec<u8> {
 
 pub async fn read_and_decrypt_payload_arc(stream: WrappedStream, noise: &mut TransportState, buf: &mut [u8]) -> usize {
     let payload = read_payload_arc(stream.clone()).await;
-
-    return noise.read_message(&payload, buf).unwrap();
+    noise.read_message(&payload, buf).unwrap()
 }
 
 pub async fn read_and_decrypt_payload(stream: &mut NegotiatedSubstream, noise: &mut TransportState, buf: &mut [u8]) -> usize {
     let payload = read_payload(stream).await;
-
-    return noise.read_message(&payload, buf).unwrap();
+    noise.read_message(&payload, buf).unwrap()
 }
 
 pub async fn read_handshake_payload_arc(stream: WrappedStream, noise: &mut HandshakeState, buf: &mut [u8]) -> usize {
     let payload = read_payload_arc(stream.clone()).await;
-
-    return noise.read_message(&payload, buf).unwrap();
+    noise.read_message(&payload, buf).unwrap()
 }
 
 pub async fn read_handshake_payload(stream: &mut NegotiatedSubstream, noise: &mut HandshakeState, buf: &mut [u8]) -> usize {
     let payload = read_payload(stream).await;
-
-    return noise.read_message(&payload, buf).unwrap();
+    noise.read_message(&payload, buf).unwrap()
 }
 
 
 pub async fn read_from_negotiated_arc(mut stream: WrappedStream) -> Result<relay_proto::Relay, ReadOneError> {
     let msg = stream.read().await?;
     let relay = relay_proto::Relay::decode(msg.as_slice()).unwrap();
-    return Ok(relay);
+    Ok(relay)
 }
 
 
@@ -295,19 +293,18 @@ pub async fn read_from_negotiated(stream: &mut NegotiatedSubstream) -> Result<re
             io::Error::new(io::ErrorKind::InvalidData, e)
         }).await?;
     let relay = relay_proto::Relay::decode(msg.as_slice()).unwrap();
-    return Ok(relay);
+    Ok(relay)
 }
 
-pub fn new_relay_circuit_success(session_id: &String) -> relay_proto::Relay {
-    let circuit_success = relay_proto::CircuitSuccess { session_id: session_id.clone() };
+pub fn new_relay_circuit_success(session_id: &str) -> relay_proto::Relay {
+    let circuit_success = relay_proto::CircuitSuccess { session_id: session_id.to_string() };
     let mut data = Vec::new();
     circuit_success.encode(&mut data).unwrap();
-    let relay = relay_proto::Relay {
+    relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Success as i32,
-        data: data,
-    };
-    return relay;
+        data,
+    }
 }
 
 pub fn new_relay_probe(session_id: &str) -> relay_proto::Relay {
@@ -317,12 +314,11 @@ pub fn new_relay_probe(session_id: &str) -> relay_proto::Relay {
     let probe_signal = relay_proto::ProbeSignal { session_id: String::from(session_id), data: hash_bytes };
     let mut probe_signal_data = Vec::new();
     probe_signal.encode(&mut probe_signal_data).unwrap();
-    let mut probe_relay = relay_proto::Relay {
+    relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Probe as i32,
         data: probe_signal_data,
-    };
-    return probe_relay;
+    }
 }
 
 pub async fn forward_relay(session: &Session, cur_stream_id: &str, relay: relay_proto::Relay) {
@@ -338,6 +334,6 @@ pub async fn send_relay_twoway(session: &Session, relay: relay_proto::Relay) {
         async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.early_stream.clone().unwrap(), relay.clone()));
     }
     if session.pair_stream.later_stream.is_some() {
-        async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.later_stream.clone().unwrap(), relay.clone()));
+        async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.later_stream.clone().unwrap(), relay));
     }
 }

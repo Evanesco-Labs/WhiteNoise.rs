@@ -3,7 +3,7 @@ use whitenoise_behaviour::{AddPeerAddresses};
 use crate::{request_proto};
 use futures::{channel::oneshot};
 use prost::Message;
-use futures::{StreamExt, channel::mpsc};
+use futures::{channel::mpsc};
 use log::{info, debug};
 use super::{protocols::relay_behaviour::WrappedStream};
 use super::protocols::proxy_protocol::{ProxyRequest};
@@ -11,14 +11,12 @@ use super::protocols::ack_protocol::{AckRequest};
 use std::collections::VecDeque;
 use crate::models::client_info::ClientInfo;
 use super::whitenoise_behaviour::{self, NodeRequest, NodeNewStream, NodeProxyRequest};
-use crate::account::account::Account;
+use crate::account::account_service::Account;
 use super::session::{Session};
 use super::utils::{from_whitenoise_to_hash, from_request_get_id};
 use super::connection::CircuitConn;
 use multihash::{Code, MultihashDigest};
 use crate::network::const_vb::BUF_LEN;
-use crate::network::whitenoise_behaviour::NodeCmdRequest;
-use libp2p::gossipsub::GossipsubMessage;
 
 
 #[derive(Clone)]
@@ -45,10 +43,10 @@ pub struct Node {
 
 impl Node {
     pub fn get_id(&self) -> String {
-        return self.keypair.public().into_peer_id().to_base58();
+        self.keypair.public().into_peer_id().to_base58()
     }
     pub async fn external_send_node_request_not_wait(&mut self, node_request: NodeRequest) {
-        self.node_request_sender.unbounded_send(node_request);
+        self.node_request_sender.unbounded_send(node_request).unwrap();
     }
     pub async fn external_send_node_request_and_wait(&mut self, key: String, node_request: NodeRequest) -> AckRequest {
         let (ack_request_sender, ack_request_receiver) = oneshot::channel();
@@ -56,7 +54,7 @@ impl Node {
             let mut guard = self.event_bus.write().unwrap();
             (*guard).insert(key, ack_request_sender);
         }
-        self.node_request_sender.unbounded_send(node_request);
+        self.node_request_sender.unbounded_send(node_request).unwrap();
         ack_request_receiver.await.unwrap()
     }
 
@@ -64,17 +62,17 @@ impl Node {
         let mut remote_peer_addr_smallvec = smallvec::SmallVec::<[Multiaddr; 6]>::new();
         remote_peer_addr_smallvec.push(remote_peer_addr.clone());
         let add_peer_addresses = AddPeerAddresses {
-            remote_peer_id: remote_peer_id.clone(),
+            remote_peer_id,
             remote_addr: remote_peer_addr_smallvec,
         };
-        self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_peer_addresses));
+        self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_peer_addresses)).unwrap();
 
         //generate request for mainnet peers
         let mainnets = request_proto::MainNetPeers {
             max: cnt
         };
         let mut buf_for_main = Vec::new();
-        let data = mainnets.encode(&mut buf_for_main);
+        let _data = mainnets.encode(&mut buf_for_main);
         let mut request = request_proto::Request {
             data: buf_for_main,
             req_id: String::from(""),
@@ -87,7 +85,7 @@ impl Node {
 
         let proxy_request = ProxyRequest(request.clone());
         let node_proxy_request_get_mainnets = NodeProxyRequest {
-            remote_peer_id: remote_peer_id.clone(),
+            remote_peer_id,
             proxy_request: Some(proxy_request),
             peer_operation: None,
         };
@@ -97,7 +95,7 @@ impl Node {
         let peer_list = request_proto::PeersList::decode(data.data.as_slice()).unwrap();
         let mut new_peer_list = request_proto::PeersList { peers: Vec::new() };
         for peer in peer_list.peers.clone() {
-            if peer.addr.len() == 0 {
+            if peer.addr.is_empty() {
                 continue;
             }
             new_peer_list.peers.push(peer.clone());
@@ -108,13 +106,13 @@ impl Node {
                 remote_addr: addr_smallvec,
             };
             info!("[WhiteNoise] mainnets address:{:?},peer_id:{:?}", add_addresses_after_getmainnets.remote_addr, add_addresses_after_getmainnets.remote_peer_id);
-            self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_addresses_after_getmainnets));
+            self.node_request_sender.unbounded_send(NodeRequest::AddPeerAddressesRequest(add_addresses_after_getmainnets)).unwrap();
         }
-        return new_peer_list;
+        new_peer_list
     }
 
     pub async fn send_ack(&mut self, ack_request: NodeRequest) {
-        self.node_request_sender.unbounded_send(ack_request);
+        self.node_request_sender.unbounded_send(ack_request).unwrap();
     }
 
     pub async fn register_proxy(&mut self, remote_peer_id: PeerId) -> bool {
@@ -124,7 +122,9 @@ impl Node {
         };
         info!("[WhiteNoise] local whitenoise id:{}", new_proxy.white_noise_id);
         let mut data_buf = Vec::new();
-        new_proxy.encode(&mut data_buf);
+        if new_proxy.encode(&mut data_buf).is_err() {
+            return false;
+        };
         let local_peer_id = PeerId::from(self.keypair.public());
         debug!("local peer id:{}", local_peer_id.to_base58());
         let mut request = request_proto::Request {
@@ -139,7 +139,7 @@ impl Node {
         let proxy_request = ProxyRequest(request);
 
         let node_proxy_request = NodeProxyRequest {
-            remote_peer_id: remote_peer_id.clone(),
+            remote_peer_id,
             proxy_request: Some(proxy_request),
             peer_operation: None,
         };
@@ -147,9 +147,9 @@ impl Node {
         info!("[WhiteNoise] finished register proxy this turn:{:?}", data);
         if data.result {
             self.proxy_id = Some(remote_peer_id);
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -160,12 +160,12 @@ impl Node {
                 return None;
             }
             let len = self.relay_out_streams.read().unwrap().len();
-            let mut index = 0 as usize;
+            let mut index = 0_usize;
             loop {
                 if index >= len {
                     break;
                 }
-                let mut relay_stream_option = self.relay_out_streams.write().unwrap().pop_front();
+                let relay_stream_option = self.relay_out_streams.write().unwrap().pop_front();
                 if relay_stream_option.is_some() {
                     let relay_stream = relay_stream_option.unwrap();
                     if relay_stream.remote_peer_id == peer_id {
@@ -174,17 +174,17 @@ impl Node {
                         self.relay_out_streams.write().unwrap().push_back(relay_stream);
                     }
                 }
-                index = index + 1;
+                index += 1;
             }
             async_std::task::sleep(std::time::Duration::from_millis(50)).await;
-            wait_time = wait_time + 50;
+            wait_time += 50;
         }
     }
 
     pub async fn wait_for_relay_stream(&mut self) -> WrappedStream {
         loop {
             {
-                let mut relay_stream_option = self.relay_in_streams.write().unwrap().pop_front();
+                let relay_stream_option = self.relay_in_streams.write().unwrap().pop_front();
                 if relay_stream_option.is_some() {
                     return relay_stream_option.unwrap();
                 }
@@ -194,7 +194,7 @@ impl Node {
     }
 
     pub async fn new_relay_stream(&mut self, peer_id: PeerId) -> Option<WrappedStream> {
-        let node_new_stream = NodeNewStream { peer_id: peer_id.clone() };
+        let node_new_stream = NodeNewStream { peer_id };
         let node_request = NodeRequest::NewStreamRequest(node_new_stream);
         let node_c = self.clone();
         async_std::task::spawn(async move {
@@ -206,7 +206,7 @@ impl Node {
         return self.wait_for_out_peer_relay_stream(peer_id).await;
     }
 
-    pub async fn handle_close_session(&mut self, session_id: &String) {
+    pub async fn handle_close_session(&mut self, session_id: &str) {
         let session_opt = self.session_map.write().unwrap().remove(session_id);
         if session_opt.is_some() {
             let session = session_opt.unwrap();
@@ -225,9 +225,9 @@ impl Node {
         let from = from_whitenoise_to_hash(local_white_noise_id.as_str());
         let to = from_whitenoise_to_hash(remote_whitenoise_id.as_str());
         let new_circuit = request_proto::NewCircuit {
-            from: from,
-            to: to,
-            session_id: session_id,
+            from,
+            to,
+            session_id,
         };
         let mut data = Vec::new();
         new_circuit.encode(&mut data).unwrap();
@@ -235,7 +235,7 @@ impl Node {
             req_id: String::from(""),
             from: local_peer_id,
             reqtype: request_proto::Reqtype::NewCircuit as i32,
-            data: data,
+            data,
         };
 
         let key = from_request_get_id(&request);
@@ -244,7 +244,7 @@ impl Node {
         let proxy_request = ProxyRequest(request.clone());
 
         let node_proxy_request = NodeProxyRequest {
-            remote_peer_id: proxy_id.clone(),
+            remote_peer_id: proxy_id,
             proxy_request: Some(proxy_request),
             peer_operation: None,
         };
@@ -255,14 +255,13 @@ impl Node {
     }
 
     pub async fn dial(&mut self, remote_whitenoise_id: String) -> String {
-        let local_whitenoise_id = crate::account::account::Account::from_keypair_to_whitenoise_id(&self.keypair);
+        let local_whitenoise_id = crate::account::account_service::Account::from_keypair_to_whitenoise_id(&self.keypair);
 
         let session_id = generate_session_id(remote_whitenoise_id.clone(), local_whitenoise_id.clone());
         info!("[WhiteNoise] session_id:{}", session_id);
         let (index, pub_bytes) = remote_whitenoise_id.split_at(1);
-        let mut composit_bytes: Vec<u8> = Vec::new();
-        composit_bytes.push(index.as_bytes()[0]);
-        bs58::decode(pub_bytes).into_vec().unwrap().iter().for_each(|x| composit_bytes.push(x.clone()));
+        let mut composit_bytes: Vec<u8> = vec![index.as_bytes()[0]];
+        bs58::decode(pub_bytes).into_vec().unwrap().iter().for_each(|x| composit_bytes.push(*x));
         self.circuit_task.write().unwrap().insert(session_id.clone(), composit_bytes);
 
         //new relay stream
@@ -278,14 +277,12 @@ impl Node {
             transport_state: None,
         };
         self.circuit_map.write().unwrap().insert(session_id.clone(), circuit_conn);
-        self.new_circuit(remote_whitenoise_id, local_whitenoise_id, self.get_id(), session_id.clone(), self.proxy_id.clone().unwrap()).await;
-        return session_id;
+        self.new_circuit(remote_whitenoise_id, local_whitenoise_id, self.get_id(), session_id.clone(), self.proxy_id.unwrap()).await;
+        session_id
     }
 
     pub async fn send_message(&self, session_id: &str, message: &[u8]) {
-        let cc = self.circuit_map.read().unwrap().get(session_id).and_then(|x| {
-            Some(x.clone())
-        });
+        let cc = self.circuit_map.read().unwrap().get(session_id).cloned();
         let mut circuit_conn = cc.unwrap();
         if circuit_conn.transport_state.is_none() {
             info!("[WhiteNoise] shake not finished");
@@ -297,11 +294,7 @@ impl Node {
     }
 
     pub async fn new_session_to_peer(&mut self, peer_id: &PeerId, session_id: String, my_role: i32, other_role: i32) -> Option<WrappedStream> {
-        let wraped_stream_opt = self.new_relay_stream(peer_id.clone()).await;
-        if wraped_stream_opt.is_none() {
-            return None;
-        }
-        let wraped_stream = wraped_stream_opt.unwrap();
+        let wraped_stream = self.new_relay_stream(*peer_id).await?;
         crate::network::utils::write_relay_wake_arc(wraped_stream.clone()).await;
         //set session id
         let key = crate::network::utils::write_set_session_with_role_arc(wraped_stream.clone(), session_id.clone(), other_role).await;
@@ -311,26 +304,26 @@ impl Node {
             (*guard).insert(key, r);
         }
         let ack_request = s.await.unwrap();
-        let AckRequest(ack) = ack_request;
+        let AckRequest(_ack) = ack_request;
         async_std::task::spawn(crate::network::relay_event_handler::relay_event_handler(wraped_stream.clone(), self.clone(), Some(session_id.clone())));
 
         if !self.session_map.read().unwrap().contains_key(&session_id) {
             let pair_stream = crate::network::session::PairStream { early_stream: Some(wraped_stream.clone()), later_stream: None };
             let session = crate::network::session::Session {
                 id: session_id.clone(),
-                pair_stream: pair_stream,
+                pair_stream,
                 session_role: my_role,
             };
             self.session_map.write().unwrap().insert(session_id.clone(), session);
         } else {
-            let new_session = self.session_map.read().unwrap().get(&session_id).and_then(|session| {
+            let new_session = self.session_map.read().unwrap().get(&session_id).map(|session| {
                 let mut new_session = session.clone();
                 new_session.pair_stream.later_stream = Some(wraped_stream.clone());
-                return Some(new_session);
+                new_session
             });
             self.session_map.write().unwrap().insert(session_id.clone(), new_session.unwrap());
         }
-        return Some(wraped_stream);
+        Some(wraped_stream)
     }
 }
 
@@ -341,13 +334,3 @@ pub fn generate_session_id(remote_id: String, local_id: String) -> String {
     let hash = &Code::Sha2_256.digest(&to_hash).to_bytes()[2..];
     bs58::encode(hash).into_string()
 }
-
-
-
-
-
-
-
-
-
-

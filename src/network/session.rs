@@ -1,6 +1,6 @@
-use futures::{StreamExt, channel::mpsc};
+
 use crate::network::protocols::relay_behaviour::WrappedStream;
-use crate::relay_proto;
+
 
 #[derive(Clone)]
 pub enum SessionRole {
@@ -27,6 +27,6 @@ pub struct Session {
 
 impl Session {
     pub fn ready(&self) -> bool {
-        return self.pair_stream.early_stream.is_some() && self.pair_stream.later_stream.is_some();
+        self.pair_stream.early_stream.is_some() && self.pair_stream.later_stream.is_some()
     }
 }

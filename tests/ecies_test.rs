@@ -1,7 +1,7 @@
 use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
 use log::{info, debug, warn, error};
 use env_logger::Builder;
-use account::account::Account;
+use account::account_service::Account;
 use whitenoisers::sdk::host::start_server;
 use whitenoisers::sdk::client::{WhiteNoiseClient, Client};
 use libp2p::{PeerId, Transport, mplex, gossipsub, identify, Swarm};
@@ -101,7 +101,7 @@ async fn test_gossip_encryption() {
 
     //start client
     let c1_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let mut c1 = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_str(key_type.as_str()), Some(c1_keypair));
+    let mut c1 = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(c1_keypair));
 
     let _peers = c1.get_main_net_peers(10).await;
     assert_eq!(_peers.len(), 3 as usize);
@@ -132,10 +132,10 @@ async fn test_gossip_encryption() {
     let cypher = encrypted_neg.cypher;
     let decrypt_res = match c2_keypair {
         identity::Keypair::Ed25519(ref x) => {
-            crate::account::account::Account::ecies_ed25519_decrypt(&c2_keypair, &cypher).unwrap()
+            crate::account::account_service::Account::ecies_ed25519_decrypt(&c2_keypair, &cypher).unwrap()
         }
         identity::Keypair::Secp256k1(ref x) => {
-            crate::account::account::Account::ecies_decrypt(&c2_keypair, &cypher).unwrap()
+            crate::account::account_service::Account::ecies_decrypt(&c2_keypair, &cypher).unwrap()
         }
         _ => {
             panic!("keypair not ed25519 or secp256k1");
@@ -167,7 +167,7 @@ impl NetworkBehaviourEventProcess<GossipsubEvent> for DummyListenerBehaviour {
     fn inject_event(&mut self, event: GossipsubEvent) {
         match event {
             GossipsubEvent::Message { propagation_source, message_id, message } => {
-                self.publish_channel.unbounded_send(message);
+                self.publish_channel.unbounded_send(message).unwrap();
             }
             GossipsubEvent::Subscribed { peer_id, .. } => {}
             _ => {}

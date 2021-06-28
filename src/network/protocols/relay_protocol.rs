@@ -37,6 +37,8 @@ pub enum RelayHandlerInEvent {
     Dial(PeerId)
 }
 
+
+
 impl RelayHandler {
     pub fn new() -> Self {
         RelayHandler {
@@ -44,6 +46,12 @@ impl RelayHandler {
             outbound: VecDeque::new(),
             events: VecDeque::new(),
         }
+    }
+}
+
+impl Default for RelayHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
