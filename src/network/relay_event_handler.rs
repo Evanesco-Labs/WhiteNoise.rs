@@ -274,7 +274,6 @@ pub fn handle_read_shake(data: Vec<u8>, noise: &mut HandshakeState, buf: &mut Ve
 }
 
 pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream: WrappedStream) {
-    //info!("[WhiteNoise] receive relay msg,peer_id:{:?}",stream.remote_peer_id);
     let relay_msg_rst = relay_proto::RelayMsg::decode(relay.data.as_slice());
     if relay_msg_rst.is_err() {
         return;
@@ -302,6 +301,7 @@ pub async fn handle_relay_msg(mut node: Node, relay: relay_proto::Relay, stream:
         }
     } else {
         if session.as_ref().unwrap().ready() {
+            info!("[WhiteNoise] relaying message, from peer_id:{:?}", stream.remote_peer_id);
             forward_relay(session.as_ref().unwrap(), stream.stream_id.as_str(), relay).await;
         } else {
             debug!("relay stream not ready");
