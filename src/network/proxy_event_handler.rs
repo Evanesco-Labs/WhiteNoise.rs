@@ -250,7 +250,8 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
             index += 1;
             index %= nodeinfos.len();
             let id = nodeinfos.get(index).unwrap().id.clone();
-            if !invalid.contains_key(&id) && id != node.get_id() && id != remote_peer_id.to_base58() {
+            let bootstrap_peer_id = node.boot_peer_id.unwrap_or_else(|| { PeerId::random() });
+            if !invalid.contains_key(&id) && id != node.get_id() && id != remote_peer_id.to_base58() && id != bootstrap_peer_id.to_base58() {
                 let remote_client_white_noise_id_hash = node.client_peer_map.read().unwrap().get(&id).cloned();
                 if remote_client_white_noise_id_hash.is_none() || from_whitenoise_to_hash(remote_client_white_noise_id_hash.unwrap().as_str()) != new_circuit.to {
                     join = PeerId::from_bytes(bs58::decode(id).into_vec().unwrap().as_slice()).unwrap();

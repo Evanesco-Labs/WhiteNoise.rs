@@ -95,21 +95,23 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
     dht_cfg.set_query_timeout(std::time::Duration::from_secs(5 * 60));
     let store = MemoryStore::new(peer_id);
     let mut kad_behaviour = Kademlia::with_config(peer_id, store, dht_cfg);
-    match bootstrap_addr_option {
-        None => {}
+
+    let bootstrap_peer_id = match bootstrap_addr_option {
+        None => { None }
         Some(bootstrap_addr) => {
             let parts: Vec<&str> = bootstrap_addr.split('/').collect();
             let bootstrap_peer_id_str = parts.last().unwrap();
             let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();
             let mut bootstrap_addr_multiaddr: Multiaddr = bootstrap_addr.parse().unwrap();
             let index_opt = bootstrap_addr.find("p2p");
-            if let Some(index) = index_opt{
+            if let Some(index) = index_opt {
                 let bootstrap_addr_parts = bootstrap_addr.split_at(index - 1);
                 bootstrap_addr_multiaddr = bootstrap_addr_parts.0.parse().unwrap();
             }
             kad_behaviour.add_address(&bootstrap_peer_id, bootstrap_addr_multiaddr);
+            Some(bootstrap_peer_id)
         }
-    }
+    };
 
     let (proxy_request_sender, proxy_request_receiver) = mpsc::unbounded();
     let (cmd_request_sender, cmd_request_receiver) = mpsc::unbounded();
@@ -126,6 +128,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
         session_map: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         circuit_map: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         probe_map: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        boot_peer_id: bootstrap_peer_id,
     };
 
     match run_mode {

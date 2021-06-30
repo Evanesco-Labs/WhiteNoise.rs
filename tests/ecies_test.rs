@@ -1,5 +1,5 @@
-use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
-use log::{info, debug, warn, error};
+use whitenoisers::{account};
+use log::{info, debug};
 use env_logger::Builder;
 use account::account_service::Account;
 use whitenoisers::sdk::host::start_server;
@@ -25,15 +25,13 @@ use futures::future::FutureExt;
 #[test]
 fn test_ecies_ed25519() {
     let message = "hello ecies".as_bytes();
-    let keytype = account::key_types::KeyType::ED25519;
     let keypair = libp2p::identity::Keypair::generate_ed25519();
 
     let whitenoise_id = Account::from_keypair_to_whitenoise_id(&keypair);
     println!("whitenosie_id {}", whitenoise_id);
 
-    let mut cyphertext = Vec::new();
     if let libp2p::identity::Keypair::Ed25519(key) = keypair.clone() {
-        cyphertext = Account::ecies_ed25519_encrypt(&key.public().encode(), message);
+        let cyphertext = Account::ecies_ed25519_encrypt(&key.public().encode(), message);
         let plaintext = Account::ecies_ed25519_decrypt(&keypair, cyphertext.as_slice()).unwrap();
         assert_eq!(message.to_vec(), plaintext);
     }
@@ -42,7 +40,6 @@ fn test_ecies_ed25519() {
 #[test]
 fn test_ecies_secp256k1() {
     let message = "hello ecies".as_bytes();
-    let keytype = account::key_types::KeyType::SECP256K1;
     let keypair = libp2p::identity::Keypair::generate_secp256k1();
 
     let whitenoise_id = Account::from_keypair_to_whitenoise_id(&keypair);
@@ -78,17 +75,17 @@ async fn test_gossip_encryption() {
     std::thread::sleep(Duration::from_secs(1));
 
     //start entry
-    let mut port_int = 6681;
+    let port_int = 6681;
     let entry_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let entry = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(entry_keypair.clone())).await;
+    let _entry = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(entry_keypair.clone())).await;
     let entry_peer_id = entry_keypair.public().into_peer_id();
 
     std::thread::sleep(Duration::from_secs(1));
 
     //start joint
-    let mut port_int = 6682;
+    let port_int = 6682;
     let joint_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let joint = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(joint_keypair.clone())).await;
+    let _joint = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(joint_keypair.clone())).await;
     let joint_peer_id = joint_keypair.public().into_peer_id();
 
     std::thread::sleep(Duration::from_secs(1));
@@ -104,22 +101,23 @@ async fn test_gossip_encryption() {
     let mut c1 = WhiteNoiseClient::init(bootstrap_addr.clone(), account::key_types::KeyType::from_text_str(key_type.as_str()), Some(c1_keypair));
 
     let _peers = c1.get_main_net_peers(10).await;
-    assert_eq!(_peers.len(), 3 as usize);
+    assert_eq!(_peers.len(), 3_usize);
 
     //register client to entry
-    let success = c1.register(entry_peer_id.clone()).await;
+    let success = c1.register(entry_peer_id).await;
     assert!(success);
 
     //Generate another keypair to dial to. No need to actually start this client.
     let c2_keypair = libp2p::identity::Keypair::generate_ed25519();
     let c2_whtienoise_id = Account::from_keypair_to_whitenoise_id(&c2_keypair);
+    let c2_whitenosie_id_hash = whitenoisers::network::utils::from_whitenoise_to_hash(&c2_whtienoise_id);
 
     //Dial c2.
     //After receive dial request, entry node will broadcast an encrypted gossip msg. Gossip msg is only able to decrypt by c2 keypair.
     let session_id = c1.dial(c2_whtienoise_id.clone()).await;
 
     //Since there is only one node able to act as Joint. We can simulate Entry Node's process to generate a gossip msg in plaintext.
-    let gossip_expect = gossip_proto::Negotiate { join: joint_peer_id.to_base58(), session_id: session_id.clone(), destination: c2_whtienoise_id.clone(), sig: Vec::new() };
+    let gossip_expect = gossip_proto::Negotiate { join: joint_peer_id.to_base58(), session_id: session_id.clone(), destination: c2_whitenosie_id_hash.clone(), sig: Vec::new() };
     let mut neg_data = Vec::new();
     gossip_expect.encode(&mut neg_data).unwrap();
 
@@ -131,10 +129,10 @@ async fn test_gossip_encryption() {
     let encrypted_neg = gossip_proto::EncryptedNeg::decode(gossipsub_message.data.as_slice()).unwrap();
     let cypher = encrypted_neg.cypher;
     let decrypt_res = match c2_keypair {
-        identity::Keypair::Ed25519(ref x) => {
+        identity::Keypair::Ed25519(ref _x) => {
             crate::account::account_service::Account::ecies_ed25519_decrypt(&c2_keypair, &cypher).unwrap()
         }
-        identity::Keypair::Secp256k1(ref x) => {
+        identity::Keypair::Secp256k1(ref _x) => {
             crate::account::account_service::Account::ecies_decrypt(&c2_keypair, &cypher).unwrap()
         }
         _ => {
@@ -142,7 +140,7 @@ async fn test_gossip_encryption() {
         }
     };
 
-    let gossip_message_decoded = gossip_proto::Negotiate::decode(neg_data.as_slice()).unwrap();
+    let gossip_message_decoded = gossip_proto::Negotiate::decode(decrypt_res.as_slice()).unwrap();
 
     //Check if the gossip message is the same as we expect.
     assert_eq!(gossip_message_decoded, gossip_expect);
@@ -166,10 +164,10 @@ impl NetworkBehaviourEventProcess<()> for DummyListenerBehaviour {
 impl NetworkBehaviourEventProcess<GossipsubEvent> for DummyListenerBehaviour {
     fn inject_event(&mut self, event: GossipsubEvent) {
         match event {
-            GossipsubEvent::Message { propagation_source, message_id, message } => {
+            GossipsubEvent::Message { propagation_source: _, message_id: _, message } => {
                 self.publish_channel.unbounded_send(message).unwrap();
             }
-            GossipsubEvent::Subscribed { peer_id, .. } => {}
+            GossipsubEvent::Subscribed { peer_id: _, .. } => {}
             _ => {}
         }
     }
@@ -181,13 +179,13 @@ impl NetworkBehaviourEventProcess<KademliaEvent> for DummyListenerBehaviour {
             KademliaEvent::RoutablePeer { peer, address } => {
                 info!("[WhiteNoise] routable peer,peer:{:?},addresses:{:?}", peer, address);
             }
-            KademliaEvent::RoutingUpdated { peer, addresses, old_peer } => {
+            KademliaEvent::RoutingUpdated { peer, addresses, old_peer: _ } => {
                 info!("[WhiteNoise] routing updated,peer:{:?},addresses:{:?}", peer, addresses);
             }
             KademliaEvent::UnroutablePeer { peer } => {
                 info!("[WhiteNoise] unroutable peer:{}", peer)
             }
-            KademliaEvent::QueryResult { id, result, .. } => {
+            KademliaEvent::QueryResult { id: _, result, .. } => {
                 info!("[WhiteNoise] query result:{:?}", result);
             }
             KademliaEvent::PendingRoutablePeer { peer, address } => {
@@ -212,7 +210,7 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for DummyListenerBeha
                         is_server_node = true;
                     }
                 });
-                if is_server_node == true {
+                if is_server_node {
                     for addr in listen_addrs {
                         debug!("identify addr:{:?}", addr);
                         self.kad_dht.add_address(&peer_id, addr);
@@ -227,7 +225,7 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for DummyListenerBeha
             identify::IdentifyEvent::Error { peer_id, error } => {
                 debug!("identify error: '{:?}',error: '{:?}'", peer_id, error);
             }
-            identify::IdentifyEvent::Pushed { peer_id } => {}
+            identify::IdentifyEvent::Pushed { peer_id: _ } => {}
         }
     }
 }
@@ -257,18 +255,17 @@ fn start_dummy_listener(port_option: std::option::Option<String>, bootstrap_addr
     let whitnoise_dht_protocol: &[u8] = b"/whitenoise_dht/kad/1.0.0";
     dht_cfg.set_protocol_name(std::borrow::Cow::Borrowed(whitnoise_dht_protocol));
     dht_cfg.set_query_timeout(std::time::Duration::from_secs(5 * 60));
-    let store = MemoryStore::new(peer_id.clone());
-    let mut kad_behaviour = Kademlia::with_config(peer_id.clone(), store, dht_cfg);
+    let store = MemoryStore::new(peer_id);
+    let mut kad_behaviour = Kademlia::with_config(peer_id, store, dht_cfg);
     match bootstrap_addr_option {
         None => {}
         Some(bootstrap_addr) => {
             let parts: Vec<&str> = bootstrap_addr.split('/').collect();
-            let bootstrap_peer_id_str = parts.get(parts.len() - 1).unwrap();
+            let bootstrap_peer_id_str = parts.last().unwrap();
             let bootstrap_peer_id = PeerId::from_bytes(bs58::decode(bootstrap_peer_id_str).into_vec().unwrap().as_slice()).unwrap();
             let mut bootstrap_addr_multiaddr: Multiaddr = bootstrap_addr.parse().unwrap();
             let index_opt = bootstrap_addr.find("p2p");
-            if index_opt.is_some() {
-                let index = index_opt.unwrap();
+            if let Some(index) = index_opt {
                 let bootstrap_addr_parts = bootstrap_addr.split_at(index - 1);
                 bootstrap_addr_multiaddr = bootstrap_addr_parts.0.parse().unwrap();
             }
@@ -327,24 +324,20 @@ fn start_dummy_listener(port_option: std::option::Option<String>, bootstrap_addr
 
     async_std::task::spawn(dummy_event_loop(swarm1));
 
-    return DummyListener {
+    DummyListener {
         publish_receiver: publish_recerver,
-    };
+    }
 }
 
 pub async fn dummy_event_loop(mut swarm1: Swarm<DummyListenerBehaviour>) {
-    let mut listening = false;
+    for addr in Swarm::listeners(&swarm1) {
+        println!("Listening on {:?}", addr);
+    }
     loop {
         futures::select! {
             event = swarm1.next().fuse() => {
                 panic!("Unexpected event: {:?}", event);
                 }
             }
-        if !listening {
-            for addr in Swarm::listeners(&swarm1) {
-                println!("Listening on {:?}", addr);
-                listening = true;
-            }
-        }
     }
 }

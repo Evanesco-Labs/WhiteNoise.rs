@@ -1,4 +1,4 @@
-use whitenoisers::{sdk::{host, host::RunMode}, account, network::{self, node::Node}};
+use whitenoisers::{account, network::{self}};
 
 
 use whitenoisers::sdk::host::start_server;
@@ -23,7 +23,7 @@ async fn node_test() {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let keypair = libp2p::identity::Keypair::generate_ed25519();
         let node = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(keypair)).await;
-        port_int = port_int + 1;
+        port_int += 1;
         node_vec.push(node);
     }
 }
