@@ -39,6 +39,7 @@ pub struct Node {
     pub session_map: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, Session>>>,
     pub circuit_map: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, CircuitConn>>>,
     pub probe_map: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, Probe>>>,
+    pub boot_peer_id: Option<libp2p::PeerId>,
 }
 
 impl Node {

@@ -15,8 +15,8 @@ fn test_bytes(){
     let hash = hash_algorithm.digest("123xyznogwgw".as_bytes());
 
     let hash_bytes = hash.to_bytes()[2..].to_vec();
-    assert_eq!(hash_bytes.get(0),Some(&(52 as u8)));
-    assert_eq!(hash_bytes.get(1),Some(&(63 as u8)));
-    assert_eq!(hash_bytes.len(),32 as usize);
-    assert_eq!(hash_bytes.get(31),Some(&(227 as u8)));
+    assert_eq!(hash_bytes.get(0),Some(&(52_u8)));
+    assert_eq!(hash_bytes.get(1),Some(&(63_u8)));
+    assert_eq!(hash_bytes.len(),32_usize);
+    assert_eq!(hash_bytes.get(31),Some(&(227_u8)));
 }
