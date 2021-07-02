@@ -1,9 +1,11 @@
+![network structure](../docs/pics/network_structure.png)
+
 # WhiteNoise Protocol
 
 ## Abstract
 
-WhiteNoise is an overlay privacy network protocol. It is designed to provide comprehensive network privacy protection,
-including link privacy, node privacy, data privacy and traffic privacy.
+WhiteNoise is a privacy network protocol for Evanesco Layer0 Network. It is designed to provide comprehensive network
+privacy protection, including link privacy, node privacy, data privacy and traffic privacy.
 
 WhiteNoise network is a decentralized and open network. Anyone can act as a Node participate in the network to relay
 data transmissions, or a Client to use private connections.
@@ -26,11 +28,13 @@ to other clients for own functions.
 
 ## Features
 
-- Without loss of privacy, WhiteNoise has a shorter privacy circuit connection;
-- No one, including both clients, can know the entire circuit connection;
+- Without loss of privacy, WhiteNoise has a multi-hop circuit connection providing better privacy protection than VPN
+  and dVPN schemes;
+- Unlike Tor, No One can know the entire circuit connection, even both sides of the connection;
 - In addition to regular link privacy, identity privacy and data privacy, it also has the capability of traffic privacy;
-- Messages are encrypted and encapsulated, and each node can only see the content related to the current node;
-- Secure handshake based Noise protocol;
+- Messages are encrypted and encapsulated, and each node can only see the content related to the current node. Our
+  end-to-end encryption scheme speed up data transmission;
+- Secure handshake based on Noise Protocol;
 
 ## Protocol
 
