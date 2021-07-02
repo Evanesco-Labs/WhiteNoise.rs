@@ -19,7 +19,7 @@ based on the Kademlia DHT routing . On this layer of the network, we use the gos
 messages for upper network.
 
 The second layer is a privacy circuit network constructed based on the WhiteNoise protocol. WhiteNoise nodes in the
-first layer act as relays and build a multi-hop circuit for P2P clients connection.
+first layer act as routing nodes and build a multi-hop circuit for P2P clients connection.
 
 Applications may use client SDK to access to WhiteNoise network. They are able to start and maintain circuit connections
 to other clients for own functions.
@@ -36,11 +36,11 @@ to other clients for own functions.
 
 ### 1. Circuit Connection
 
-Normally a circuit connection is composed of entry node, joint node, relay node and an exit node. Link privacy means
+Normally a circuit connection is composed of Entry node, Sink node, Relay node and an Access node. Link privacy means
 that any node cannot fully learn about the entire circuit.
 
 For ease of description, we define the two clients building circuit connection: Alice and Bob. Define the nodes that
-Alice and Bob registered to access the WhiteNoise network as Enter Node and Exit Node, respectively;
+Alice and Bob registered to access the WhiteNoise network as Enter Node and Access Node, respectively;
 
 First, Alice will inform Enter Node the hash of Bob's WhiteNoiseID (unique client identity), requesting it to build a
 circuit to Bob.
@@ -55,18 +55,18 @@ Alice based on ECIES scheme, and only Bob is able to decrypt. It contains the fo
 
 - Hash of Bob's WhiteNoiseID
 
-  Each node in the first layer network will receive the gossip message. When Exit Node finds that Bob, implied in the
+  Each node in the first layer network will receive the gossip message. When Access Node finds that Bob, implied in the
   gossip message, is his client, it will respond to this gossip and start building connections.
 
-- Joint Node ID
+- Sink Node ID
 
-  The Joint Node of this circuit is chosen and the Exit Node will build a connection to this Joint Node through one or
+  The Sink Node of this circuit is chosen and the Access Node will build a connection to this Sink Node through one or
   more Relay Nodes.
 
 Finally circuit connection is basically done, and the circuit connection is like:
 
-**Alice ⟷ EntryNode ⟷ Joint Node ⟷ Relay Node (or nodes)
-⟷ Exit Node ⟷ Bob**
+**Alice ⟷ EntryNode ⟷ Sink Node ⟷ Relay Node (or nodes)
+⟷ Access Node ⟷ Bob**
 
 ### Data Secure
 

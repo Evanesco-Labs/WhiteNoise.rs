@@ -101,8 +101,9 @@ async fn register_test() {
     }
 }
 
-//Tests two clients creating privacy connection in a WhiteNoise Network with one bootstrap node and 6 relay nodes.
-//Relay nodes in the successfully generated connection are randomly chosen, and their roles (Entry, Joint, Relay, Exit) are shown in log.
+///Tests two clients creating privacy connection in a WhiteNoise Network with one bootstrap node and 6 routing nodes.
+///Routing nodes of a multi-hop connection are randomly chosen from all peers.
+///They act as four roles Entry, Sink, Relay and Access. The exact role of a node is shown in log.
 #[async_std::test]
 async fn circuit_connection_test() {
     //init log
@@ -158,7 +159,7 @@ async fn circuit_connection_test() {
 
     let caller_proxy_id = *peers_answer.get(1).unwrap();
 
-    //caller register to exit node (this proxy act as the entry node in multi-hop connection)
+    //caller register to access node (this proxy act as the entry node in multi-hop connection)
     let success = caller.register(caller_proxy_id).await;
     assert!(success);
 
