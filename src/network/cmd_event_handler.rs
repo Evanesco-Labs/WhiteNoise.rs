@@ -25,7 +25,7 @@ pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<Nod
                 let session_expend = command_proto::SessionExpend::decode(request.data.as_slice()).unwrap();
                 let mut ack = command_proto::Ack { command_id: request.command_id, result: false, data: Vec::new() };
                 let session = node.session_map.read().unwrap().get(&session_expend.session_id).cloned();
-                info!("[WhiteNoise] prepare to process cmd request,i am relay node,session id:{}", session_expend.session_id);
+                info!("[WhiteNoise] prepare to process cmd request, ack as relay node, session id:{}", session_expend.session_id);
                 if session.is_none() {
                     node.handle_close_session(&session_expend.session_id).await;
                     ack.data = "No such session".as_bytes().to_vec();
@@ -44,8 +44,8 @@ pub async fn process_cmd_request(mut cmd_request_receiver: UnboundedReceiver<Nod
                     send_relay_twoway(&new_session, circuit_success_relay).await;
                     continue;
                 }
-                let joint_peer_id = PeerId::from_bytes(bs58::decode(session_expend.peer_id).into_vec().unwrap().as_slice()).unwrap();
-                let wraped_stream = node.new_session_to_peer(&joint_peer_id, session_expend.session_id.clone(), SessionRole::RelayRole as i32, SessionRole::JointRole as i32).await;
+                let sink_peer_id = PeerId::from_bytes(bs58::decode(session_expend.peer_id).into_vec().unwrap().as_slice()).unwrap();
+                let wraped_stream = node.new_session_to_peer(&sink_peer_id, session_expend.session_id.clone(), SessionRole::RelayRole as i32, SessionRole::SinkRole as i32).await;
                 if wraped_stream.is_none() {
                     node.handle_close_session(&session_expend.session_id).await;
                     ack.data = "new session error".as_bytes().to_vec();

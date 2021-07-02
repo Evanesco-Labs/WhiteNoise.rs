@@ -13,7 +13,7 @@ WhiteNoise Protocol has superior robustness, ease of use, and cross-platform. It
 transmission capabilities in a very friendly manner, allowing upper-layer applications to easily and confidently focus
 on their own business innovations. The privacy of the data is fully guaranteed by WhiteNoise.
 
-Learn more [specifics about WhiteNoise](./whitenoise.md).
+Learn more [specifics about WhiteNoise](docs/whitenoise_spec.md) and WhiteNoise multi-hop connection [Workflows](./docs/workflows.md).
 
 ## Build
 
@@ -75,7 +75,7 @@ Notice: Please remember the value of Multiaddress(*/ip4/127.0.0.1/tcp/3331/p2p/1
 
 #### 2. Start WhiteNoise Node1
 
-This command will start a WhiteNoise node as normal relay node, listening to port "3332". Make sure the port is
+This command will start a WhiteNoise node as normal routing node, listening to port "3332". Make sure the port is
 available and fill in the Bootstrap **MultiAddress** in the `--bootstrap` flag:
 
 ```shell
@@ -94,11 +94,11 @@ cd node2
 Of course, we will see some **JOINING** logs about node2 printed in boot node as following:
 ![img.png](docs/pics/img2.png)
 
-Change the port and start node3 and node4, finally we will build a network with four relay nodes and one bootstrap node.
+Change the port and start node3 and node4, finally we will build a network with four routing nodes and one bootstrap node.
 
 ### Join WhiteNoise Network
 
-You are able to join remote WhiteNoise network as a relay node, if you know the **MultiAddress** of it's Bootstrap. Just
+You are able to join remote WhiteNoise network as a routing node, if you know the **MultiAddress** of it's Bootstrap. Just
 simply fill in the bootstrap flag.
 
 ## Test 

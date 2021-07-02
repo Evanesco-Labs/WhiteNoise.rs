@@ -49,15 +49,15 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                 continue;
             }
             let negotiate = gossip_proto::Negotiate::decode(ack.data.as_slice()).unwrap();
-            info!("[WhiteNoise] i have the answer client,i am exit node,session id:{}", negotiate.session_id);
-            let wraped_stream_opt = node.new_session_to_peer(&client_info.peer_id, negotiate.session_id.clone(), SessionRole::ExitRole as i32, SessionRole::AnswerRole as i32).await;
+            info!("[WhiteNoise] I have the answer client, ack as access node, session id:{}", negotiate.session_id);
+            let wraped_stream_opt = node.new_session_to_peer(&client_info.peer_id, negotiate.session_id.clone(), SessionRole::AccessRole as i32, SessionRole::AnswerRole as i32).await;
             if wraped_stream_opt.is_none() {
                 info!("[WhiteNoise] new session to answer client error");
                 node.handle_close_session(&negotiate.session_id).await;
                 continue;
             }
             if negotiate.join == node.get_id() {
-                info!("[WhiteNoise] act both joint and exit,session id:{}", negotiate.session_id);
+                info!("[WhiteNoise] act both sink and access,session id:{}", negotiate.session_id);
 
                 let circuit_success_relay = new_relay_circuit_success(&negotiate.session_id);
                 let new_session_opt = {
@@ -65,7 +65,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                     (*guard).get(&negotiate.session_id).cloned()
                 };
                 if new_session_opt.is_none() {
-                    info!("[WhiteNoise] joint and exit node have no session");
+                    info!("[WhiteNoise] sink and access node have no session");
                     continue;
                 }
                 if new_session_opt.is_some() {
@@ -105,7 +105,7 @@ pub async fn process_publish_request(mut publish_receiver: UnboundedReceiver<Gos
                         }
                     }
                 }
-                let wraped_stream_opt = node.new_session_to_peer(&relay, negotiate.session_id.clone(), SessionRole::ExitRole as i32, SessionRole::RelayRole as i32).await;
+                let wraped_stream_opt = node.new_session_to_peer(&relay, negotiate.session_id.clone(), SessionRole::AccessRole as i32, SessionRole::RelayRole as i32).await;
                 if wraped_stream_opt.is_none() {
                     invalid.insert(relay.to_base58(), true);
                 } else {

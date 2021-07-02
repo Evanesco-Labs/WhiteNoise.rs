@@ -6,9 +6,9 @@ use crate::network::protocols::relay_behaviour::WrappedStream;
 pub enum SessionRole {
     CallerRole = 1,
     EntryRole,
-    JointRole,
+    SinkRole,
     RelayRole,
-    ExitRole,
+    AccessRole,
     AnswerRole,
 }
 

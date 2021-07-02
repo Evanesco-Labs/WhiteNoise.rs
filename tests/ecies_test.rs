@@ -82,15 +82,15 @@ async fn test_gossip_encryption() {
 
     std::thread::sleep(Duration::from_secs(1));
 
-    //start joint
+    //start sink
     let port_int = 6682;
-    let joint_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let _joint = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(joint_keypair.clone())).await;
-    let joint_peer_id = joint_keypair.public().into_peer_id();
+    let sink_keypair = libp2p::identity::Keypair::generate_ed25519();
+    let _sink = start_server(Some(bootstrap_addr.clone()), Some(port_int.to_string()), key_type.clone(), Some(sink_keypair.clone())).await;
+    let sink_peer_id = sink_keypair.public().into_peer_id();
 
     std::thread::sleep(Duration::from_secs(1));
 
-    //start dummy listener. Dummy listener listen gossip messages but doesn't handle.
+    //Start dummy listener. Dummy listener only listens to gossip messages but doesn't handle.
     let mut dummy = start_dummy_listener(Some("6683".to_string()), Some(bootstrap_addr.clone()));
 
     //waiting for update peerlist
@@ -116,8 +116,8 @@ async fn test_gossip_encryption() {
     //After receive dial request, entry node will broadcast an encrypted gossip msg. Gossip msg is only able to decrypt by c2 keypair.
     let session_id = c1.dial(c2_whtienoise_id.clone()).await;
 
-    //Since there is only one node able to act as Joint. We can simulate Entry Node's process to generate a gossip msg in plaintext.
-    let gossip_expect = gossip_proto::Negotiate { join: joint_peer_id.to_base58(), session_id: session_id.clone(), destination: c2_whitenosie_id_hash.clone(), sig: Vec::new() };
+    //Sink node is randomly chosen, but there is only one node able to act as Sink. So We can simulate Entry Node's process to generate a gossip msg in plaintext.
+    let gossip_expect = gossip_proto::Negotiate { join: sink_peer_id.to_base58(), session_id: session_id.clone(), destination: c2_whitenosie_id_hash.clone(), sig: Vec::new() };
     let mut neg_data = Vec::new();
     gossip_expect.encode(&mut neg_data).unwrap();
 
@@ -230,7 +230,7 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for DummyListenerBeha
     }
 }
 
-// DummyListener is only used for testing. DummyListener can not handle requests or act as a relay node.
+// DummyListener is only used for testing. DummyListener can not handle requests or act as a routing node.
 // It just subscribe to the gossip_sub topic and listen to gossip messages.
 struct DummyListener {
     publish_receiver: mpsc::UnboundedReceiver<GossipsubMessage>,

@@ -206,12 +206,12 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
         (*guard).get(&new_circuit.to).cloned()
     };
     if to_client_info_opt.is_some() {
-        info!("[WhiteNoise] entry node is also exit node,session id:{}", new_circuit.session_id);
+        info!("[WhiteNoise] entry node is also access node,session id:{}", new_circuit.session_id);
         let to_client_info = to_client_info_opt.unwrap();
 
-        let wraped_stream_opt = node.new_session_to_peer(&to_client_info.peer_id, new_circuit.session_id.clone(), SessionRole::ExitRole as i32, SessionRole::AnswerRole as i32).await;
+        let wraped_stream_opt = node.new_session_to_peer(&to_client_info.peer_id, new_circuit.session_id.clone(), SessionRole::AccessRole as i32, SessionRole::AnswerRole as i32).await;
         if wraped_stream_opt.is_none() {
-            info!("[WhiteNoise] same entry and exit,new session to peer failed");
+            info!("[WhiteNoise] same entry and access, new session to peer failed");
             return false;
         }
         let _wraped_stream = wraped_stream_opt.unwrap();
@@ -227,7 +227,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
         }
         return true;
     }
-    info!("[WhiteNoise] i am entry node,session id:{}", new_circuit.session_id);
+    info!("[WhiteNoise] ack as entry node,session id:{}", new_circuit.session_id);
 
     let (sender, receiver) = futures::channel::oneshot::channel();
     let get_main_nets = GetMainNets { command_id: request.req_id.clone(), remote_peer_id, num: 100, sender };
@@ -243,7 +243,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     let mut join = PeerId::random();
 
     for i in 0..3 {
-        info!("[WhiteNoise] try {} for connecto to other peer for joint role", i);
+        info!("[WhiteNoise] try {} for connecto to other peer for sink role", i);
         let mut index = rand::random::<usize>();
 
         for _j in 0..(nodeinfos.len()) {
@@ -259,7 +259,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
                 }
             }
         }
-        let wraped_stream_opt = node.new_session_to_peer(&join, new_circuit.session_id.clone(), SessionRole::EntryRole as i32, SessionRole::JointRole as i32).await;
+        let wraped_stream_opt = node.new_session_to_peer(&join, new_circuit.session_id.clone(), SessionRole::EntryRole as i32, SessionRole::SinkRole as i32).await;
         if wraped_stream_opt.is_none() {
             invalid.insert(join.to_base58(), true);
         } else {
@@ -269,7 +269,7 @@ pub async fn handle_new_circuit(mut node: Node, request: request_proto::Request,
     }
 
     if !try_join {
-        info!("[WhiteNoise] try three times to find joint but failed");
+        info!("[WhiteNoise] try three times to find sink but failed");
         node.handle_close_session(&new_circuit.session_id).await;
         return false;
     }
