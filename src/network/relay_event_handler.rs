@@ -2,7 +2,7 @@ use libp2p::{noise};
 use crate::{command_proto, relay_proto};
 use prost::Message;
 use futures::{StreamExt, channel::mpsc};
-use log::{info, warn, debug};
+use log::{info, debug};
 use super::{protocols::relay_behaviour::WrappedStream};
 use super::protocols::ack_protocol::{AckRequest};
 use snow::{params::NoiseParams, Builder, HandshakeState};
@@ -19,7 +19,6 @@ pub async fn relay_event_handler(stream: WrappedStream, mut node: Node, mut sess
     loop {
         let read_relay_option = read_from_negotiated_arc(stream.clone()).await;
         if read_relay_option.is_err() {
-            warn!("relay stream error");
             if session_id.is_some() {
                 let cur_stream_id = stream.stream_id.clone();
                 let find_stream = {

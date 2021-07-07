@@ -5,6 +5,7 @@ message Relay {
   string id = 1;
   relaytype type = 2;
   bytes data = 3;
+  bytes confusion = 4;
 }
 
 enum relaytype {
