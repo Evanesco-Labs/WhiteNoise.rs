@@ -12,6 +12,10 @@ use libp2p::futures::TryFutureExt;
 use snow::{TransportState, HandshakeState};
 use libp2p::core::upgrade::ReadOneError;
 use log::{info, debug};
+use rand::{RngCore, Rng};
+use crate::network::const_vb::{CONFUSION_MAX_PROPORTION, JITTER_MAX_MICROS, CONFUSION_PAD_LEN};
+use std::time::Duration;
+use std::convert::TryInto;
 
 pub fn from_request_get_id(request: &request_proto::Request) -> String {
     let mut buf = Vec::new();
@@ -36,12 +40,14 @@ pub fn from_whitenoise_to_hash(whitenoise_id: &str) -> String {
 }
 
 pub async fn write_relay_arc(mut stream: WrappedStream, mut relay: relay_proto::Relay) -> String {
+    relay = confusion_relay(relay);
     let mut relay_data = Vec::new();
     relay.encode(&mut relay_data).unwrap();
     let key = from_bytes_get_id(&relay_data);
     relay.id = key.clone();
     let mut relay_data = Vec::new();
     relay.encode(&mut relay_data).unwrap();
+    jitter().await;
     stream.write(relay_data).await;
     key
 }
@@ -63,6 +69,7 @@ pub async fn write_payload_arc(stream: WrappedStream, buf: &[u8], len: usize, se
         id: String::from(""),
         r#type: relay_proto::Relaytype::Data as i32,
         data: relay_msg_data,
+        confusion: Vec::new(),
     };
     write_relay_arc(stream.clone(), relay).await;
 }
@@ -92,12 +99,14 @@ pub async fn generate_handshake_payload(identity: KeypairIdentity) -> Vec<u8> {
 
 pub async fn write_relay(stream: &mut NegotiatedSubstream, mut relay: relay_proto::Relay) -> String {
     let mut relay_data = Vec::new();
+    relay = confusion_relay(relay);
     relay.encode(&mut relay_data).unwrap();
     let key = from_bytes_get_id(&relay_data);
     relay.id = key.clone();
     let mut relay_data = Vec::new();
     relay.encode(&mut relay_data).unwrap();
 
+    jitter().await;
     upgrade::write_with_len_prefix(stream, &relay_data).map_err(|e| {
         info!("[WhiteNoise] write relay error:{:?}", e);
         io::Error::new(io::ErrorKind::InvalidData, e)
@@ -116,6 +125,7 @@ pub async fn write_disconnect_arc(stream: WrappedStream, session_id: String) {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Disconnect as i32,
         data,
+        confusion: Vec::new(),
     };
     write_relay_arc(stream.clone(), relay).await;
 }
@@ -125,6 +135,7 @@ pub async fn write_relay_wake_arc(stream: WrappedStream) {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Wake as i32,
         data: Vec::new(),
+        confusion: Vec::new(),
     };
     write_relay_arc(stream.clone(), relay).await;
 }
@@ -134,6 +145,7 @@ pub async fn write_relay_wake(stream: &mut NegotiatedSubstream) {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Wake as i32,
         data: Vec::new(),
+        confusion: Vec::new(),
     };
     write_relay(stream, relay).await;
 }
@@ -150,6 +162,7 @@ pub async fn write_set_session_with_role_arc(stream: WrappedStream, session_id: 
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
         data,
+        confusion: Vec::new(),
     };
     return write_relay_arc(stream.clone(), relay).await;
 }
@@ -166,6 +179,7 @@ pub async fn write_set_session_arc(stream: WrappedStream, session_id: String) ->
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
         data,
+        confusion: Vec::new(),
     };
     return write_relay_arc(stream.clone(), relay).await;
 }
@@ -182,6 +196,7 @@ pub async fn write_set_session(stream: &mut NegotiatedSubstream, session_id: Str
         id: String::from(""),
         r#type: relay_proto::Relaytype::SetSessionId as i32,
         data,
+        confusion: Vec::new(),
     };
     return write_relay(stream, relay).await;
 }
@@ -202,6 +217,7 @@ pub async fn write_payload(stream: &mut NegotiatedSubstream, buf: &[u8], len: us
         id: String::from(""),
         r#type: relay_proto::Relaytype::Data as i32,
         data: relay_msg_data,
+        confusion: Vec::new(),
     };
     write_relay(stream, relay).await;
 }
@@ -304,6 +320,7 @@ pub fn new_relay_circuit_success(session_id: &str) -> relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Success as i32,
         data,
+        confusion: Vec::new(),
     }
 }
 
@@ -318,6 +335,7 @@ pub fn new_relay_probe(session_id: &str) -> relay_proto::Relay {
         id: String::from(""),
         r#type: relay_proto::Relaytype::Probe as i32,
         data: probe_signal_data,
+        confusion: Vec::new(),
     }
 }
 
@@ -336,4 +354,47 @@ pub async fn send_relay_twoway(session: &Session, relay: relay_proto::Relay) {
     if session.pair_stream.later_stream.is_some() {
         async_std::task::spawn(crate::network::utils::write_relay_arc(session.pair_stream.later_stream.clone().unwrap(), relay));
     }
+}
+
+fn confusion_relay(relay: relay_proto::Relay) -> relay_proto::Relay {
+    let mut rng = rand::thread_rng();
+    let confusion_len = rng.gen_range(0, relay.data.as_slice().len() * CONFUSION_MAX_PROPORTION / 100 + CONFUSION_PAD_LEN);
+    let mut confusion = vec![0u8; confusion_len];
+    rng.fill_bytes(confusion.as_mut_slice());
+    relay_proto::Relay {
+        id: relay.id,
+        r#type: relay.r#type,
+        data: relay.data,
+        confusion,
+    }
+}
+
+fn random_jitter_duration() -> Duration {
+    let mut rng = rand::thread_rng();
+    Duration::from_micros(rng.gen_range(0, JITTER_MAX_MICROS).try_into().unwrap())
+}
+
+async fn jitter() {
+    let dur = random_jitter_duration();
+    async_std::task::sleep(dur).await;
+}
+
+#[test]
+fn test_confusion() {
+    let data_len = 1024;
+    let data = vec![0u8; data_len];
+    let max_confusion_len = data_len * CONFUSION_MAX_PROPORTION / 100;
+    let confusion = vec![0u8; 5];
+    let relay = relay_proto::Relay {
+        id: String::from(""),
+        r#type: relay_proto::Relaytype::Data as i32,
+        data,
+        confusion,
+    };
+    let mut relay_encoded = Vec::new();
+    relay.encode(&mut relay_encoded).unwrap();
+    let next_relay = confusion_relay(relay);
+    let mut next_relay_encoded = Vec::new();
+    next_relay.encode(&mut next_relay_encoded).unwrap();
+    assert!(next_relay.confusion.as_slice().len() <= max_confusion_len)
 }
