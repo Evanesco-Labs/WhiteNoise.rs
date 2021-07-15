@@ -48,7 +48,7 @@ pub struct WhiteNoiseClient {
     pub node: Node,
     bootstrap_addr_str: String,
     bootstrap_peer_id: PeerId,
-    new_connected_session: std::sync::Arc<futures::lock::Mutex<futures::channel::mpsc::UnboundedReceiver<String>>>,
+    pub new_connected_session: futures::channel::mpsc::UnboundedReceiver<String>,
     exist_session: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>,
 }
 
@@ -87,7 +87,7 @@ impl WhiteNoiseClient {
             node,
             bootstrap_addr_str,
             bootstrap_peer_id,
-            new_connected_session: std::sync::Arc::new(futures::lock::Mutex::new(new_connected_receiver)),
+            new_connected_session: new_connected_receiver,
             exist_session,
         }
     }
@@ -123,6 +123,6 @@ impl Client for WhiteNoiseClient {
         Account::from_keypair_to_whitenoise_id(&self.node.keypair)
     }
     async fn notify_next_session(&mut self) -> Option<String> {
-        self.new_connected_session.lock().await.next().await
+        self.new_connected_session.next().await
     }
 }
