@@ -121,7 +121,6 @@ impl Node {
             time: String::from("60m"),
             white_noise_id: Account::from_keypair_to_whitenoise_id(&self.keypair),
         };
-        info!("[WhiteNoise] local whitenoise id:{}", new_proxy.white_noise_id);
         let mut data_buf = Vec::new();
         if new_proxy.encode(&mut data_buf).is_err() {
             return false;

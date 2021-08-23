@@ -7,7 +7,7 @@ use futures::{StreamExt};
 
 use crate::sdk::{host, host::RunMode};
 use async_trait::async_trait;
-use log::{debug};
+use log::{debug,info};
 use crate::account::account_service::Account;
 
 pub async fn process_new_stream(mut node: Node) {
@@ -83,13 +83,16 @@ impl WhiteNoiseClient {
         let exist_session = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         async_std::task::spawn(process_new_stream(node.clone()));
         async_std::task::spawn(process_new_session(node.clone(), new_connected_sender, exist_session.clone()));
-        WhiteNoiseClient {
+
+        let whitenoise_client = WhiteNoiseClient {
             node,
             bootstrap_addr_str,
             bootstrap_peer_id,
             new_connected_session: new_connected_receiver,
             exist_session,
-        }
+        };
+        info!("[WhiteNoise] local whitenoise id:{}", whitenoise_client.get_whitenoise_id());
+        whitenoise_client
     }
 }
 
