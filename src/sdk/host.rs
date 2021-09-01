@@ -60,7 +60,7 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
         .upgrade(upgrade::Version::V1)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(mplex::MplexConfig::default())
-        .timeout(std::time::Duration::from_millis(150))
+        .timeout(std::time::Duration::from_secs(5u64))
         .boxed();
 
 
