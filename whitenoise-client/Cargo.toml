@@ -1,0 +1,22 @@
+[package]
+name = "whitenoise-client"
+version = "0.1.0"
+authors = ["Evanesco-Labs"]
+edition = "2018"
+
+[dependencies]
+libp2p = { version = "0.37.1" }
+log = "0.4"
+async-std = { version = "1.6.5", features = ["attributes"] }
+futures = "0.3.1"
+bytes = "1"
+async-trait = "0.1"
+bs58 = "0.4.0"
+env_logger = "0.8.1"
+clap = "2.27.0"
+rand = "0.7"
+prost = "0.7"
+whitenoisers = { path = '../' }
+
+[build-dependencies]
+prost-build = "0.7"
