@@ -287,7 +287,16 @@ impl NetworkBehaviourEventProcess<identify::IdentifyEvent> for WhitenoiseServerB
 #[derive(NetworkBehaviour)]
 pub struct WhitenoiseClientBehaviour {
     pub whitenoise_behaviour: WhitenoiseBehaviour,
+    pub gossip_sub: gossipsub::Gossipsub,
     pub identify_behaviour: identify::Identify,
+}
+
+impl NetworkBehaviourEventProcess<GossipsubEvent> for WhitenoiseClientBehaviour {
+    fn inject_event(&mut self, event: GossipsubEvent) {
+        match event {
+            _ => {}
+        }
+    }
 }
 
 impl NetworkBehaviourEventProcess<()> for WhitenoiseClientBehaviour {

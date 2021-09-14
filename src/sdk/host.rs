@@ -144,8 +144,10 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
                 proxy_request_channel: proxy_request_sender,
                 cmd_request_channel: cmd_request_sender,
             };
+            let gossipsub = new_gossipsub();
             let whitenoise_client_behaviour = WhitenoiseClientBehaviour {
                 whitenoise_behaviour,
+                gossip_sub: gossipsub,
                 identify_behaviour,
             };
             let mut swarm1 = SwarmBuilder::new(trans, whitenoise_client_behaviour, peer_id)
@@ -164,28 +166,29 @@ pub fn start(port_option: std::option::Option<String>, bootstrap_addr_option: st
             async_std::task::spawn(whitenoise_behaviour::whitenoise_client_event_loop(swarm1, node_request_receiver));
         }
         RunMode::Server => {
-            let message_id_fn = |message: &GossipsubMessage| {
-                let mut s = DefaultHasher::new();
-                message.data.hash(&mut s);
-                MessageId::from(s.finish().to_string())
-            };
+            // let message_id_fn = |message: &GossipsubMessage| {
+            //     let mut s = DefaultHasher::new();
+            //     message.data.hash(&mut s);
+            //     MessageId::from(s.finish().to_string())
+            // };
+            //
+            // // Set a custom gossipsub
+            // let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
+            //     .heartbeat_interval(std::time::Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
+            //     .validation_mode(ValidationMode::Permissive) // This sets the kind of message validation. The default is Strict (enforce message signing)
+            //     .message_id_fn(message_id_fn) // content-address messages. No two messages of the
+            //     // same content will be propagated.
+            //     .build()
+            //     .expect("Valid config");
+            // // build a gossipsub network behaviour
+            // let mut gossipsub: gossipsub::Gossipsub =
+            //     gossipsub::Gossipsub::new(MessageAuthenticity::Anonymous, gossipsub_config)
+            //         .expect("Correct configuration");
+            // let topic = Topic::new("noise_topic");
+            // // subscribes to our topic
+            // gossipsub.subscribe(&topic).unwrap();
 
-            // Set a custom gossipsub
-            let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
-                .heartbeat_interval(std::time::Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
-                .validation_mode(ValidationMode::Permissive) // This sets the kind of message validation. The default is Strict (enforce message signing)
-                .message_id_fn(message_id_fn) // content-address messages. No two messages of the
-                // same content will be propagated.
-                .build()
-                .expect("Valid config");
-            // build a gossipsub network behaviour
-            let mut gossipsub: gossipsub::Gossipsub =
-                gossipsub::Gossipsub::new(MessageAuthenticity::Anonymous, gossipsub_config)
-                    .expect("Correct configuration");
-            let topic = Topic::new("noise_topic");
-            // subscribes to our topic
-            gossipsub.subscribe(&topic).unwrap();
-
+            let gossipsub = new_gossipsub();
             let whitenoise_behaviour = WhitenoiseBehaviour {
                 proxy_behaviour,
                 cmd_behaviour,
@@ -247,4 +250,30 @@ pub async fn start_server(bootstrap_addr_option: Option<String>, port_option: Op
         }
     });
     node_c
+}
+
+
+pub fn new_gossipsub() -> gossipsub::Gossipsub {
+    let message_id_fn = |message: &GossipsubMessage| {
+        let mut s = DefaultHasher::new();
+        message.data.hash(&mut s);
+        MessageId::from(s.finish().to_string())
+    };
+
+    // Set a custom gossipsub
+    let gossipsub_config = gossipsub::GossipsubConfigBuilder::default()
+        .heartbeat_interval(std::time::Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
+        .validation_mode(ValidationMode::Permissive) // This sets the kind of message validation. The default is Strict (enforce message signing)
+        .message_id_fn(message_id_fn) // content-address messages. No two messages of the
+        // same content will be propagated.
+        .build()
+        .expect("Valid config");
+    // build a gossipsub network behaviour
+    let mut gossipsub: gossipsub::Gossipsub =
+        gossipsub::Gossipsub::new(MessageAuthenticity::Anonymous, gossipsub_config)
+            .expect("Correct configuration");
+    let topic = Topic::new("noise_topic");
+    // subscribes to our topic
+    gossipsub.subscribe(&topic).unwrap();
+    gossipsub
 }
